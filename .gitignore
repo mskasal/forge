@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# CAD outputs & local config
+out/
+forge.local.toml
+*.env
+!*.env.example
+hub/config/
+hub/hub.toml
+hub/tokens
+deploy/remote/.env
+deploy/remote/Caddyfile
+deploy/remote/allowed-emails.txt
+
+# Apple TV Xcode build artifacts & personal signing config
+clients/appletv/Local.xcconfig
+clients/appletv/*.xcodeproj/
+clients/appletv/build/
+
+# OS / editors
+.DS_Store
+.vscode/
+.claude/
