@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Forge">
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#16181D"/>
+  <polygon points="64,68 31,49 31,87 64,106" fill="#4E5666"/>
+  <polygon points="64,68 97,49 97,87 64,106" fill="#F2F3F5"/>
+  <polygon points="64,23 97,42 64,61 31,42" fill="#E8A838"/>
+</svg>

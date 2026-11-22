@@ -1,6 +1,12 @@
-# Forge
+<p align="center">
+  <img src="docs/media/icon.svg" alt="Forge icon" width="88" height="88" />
+</p>
 
-**Low-token parametric 3D CAD, automated FDM printability checks, offline 3D web/Apple TV preview, and guarded multi-printer dispatch — built for AI coding agents.**
+<h1 align="center">Forge</h1>
+
+<p align="center">
+  <strong>Low-token parametric 3D CAD, automated FDM printability checks, offline 3D web/Apple TV preview, and guarded multi-printer dispatch — built for AI coding agents.</strong>
+</p>
 
 Describe a physical part to Claude Code, Antigravity, Gemini CLI, Codex, Cursor, or ChatGPT. Forge enforces sourced dimensions, separates parameters (`params.py`) from Build123d geometry, scans layers for printability issues before slicing, previews live in your browser or on Apple TV, and only prints when **you** explicitly approve.
 
