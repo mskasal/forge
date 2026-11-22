@@ -1,0 +1,23 @@
+# Forge Hub configuration (copy to ~/.config/forge/hub.toml or /etc/forge/hub.toml)
+# Set FORGE_HUB_CONFIG=/path/to/hub.toml when running via Docker or `forge serve`.
+
+[hub]
+data_dir = "/var/lib/forge"
+tokens_file = "/etc/forge/tokens"
+owner_role = "owner"
+# Set only when using `docker compose --profile remote` (Caddy / oauth2-proxy container IP)
+remote_peer = ""
+
+# Optional: add 0, 1, or many printers. Leave empty for preview-only mode.
+# [[printers]]
+# id = "a1-desk"
+# name = "Bambu A1"
+# backend = "bambu_lan"
+# model = "Bambu Lab A1"
+# nozzle = "0.4"
+# host = "192.168.1.50"
+# serial = "03919A000000000"
+# access_code_env = "FORGE_PRINTER_A1_CODE"
+# max_nozzle_temp = 240.0
+# max_bed_temp = 65.0
+# use_ams = false

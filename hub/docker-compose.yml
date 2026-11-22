@@ -1,0 +1,83 @@
+# Forge Hub — Always-on Docker deployment (Raspberry Pi, Linux server, NAS, or Mac).
+#
+# Local / LAN only:
+#   docker compose -f hub/docker-compose.yml up -d
+#
+# With optional Read-Only Remote Preview (Cloudflare Tunnel + Caddy + oauth2-proxy):
+#   docker compose -f hub/docker-compose.yml --profile remote up -d
+
+services:
+  forge-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: forge-hub
+    restart: unless-stopped
+    ports:
+      - "8590:8590"
+    environment:
+      FORGE_DATA: /var/lib/forge
+      FORGE_TOKENS: /etc/forge/tokens
+      FORGE_HUB_CONFIG: /etc/forge/hub.toml
+      # Fixed IP of forge-auth on the internal remote network (only active with --profile remote)
+      FORGE_REMOTE_PEER: ${FORGE_REMOTE_PEER:-172.30.90.2}
+    volumes:
+      - forge-data:/var/lib/forge
+      - ${FORGE_CONFIG_DIR:-./config}:/etc/forge:ro
+    networks:
+      forge-remote:
+        ipv4_address: 172.30.90.10
+
+  forge-auth:
+    profiles: ["remote"]
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    container_name: forge-auth
+    restart: unless-stopped
+    env_file:
+      - ../deploy/remote/.env
+    command:
+      - --http-address=0.0.0.0:4180
+      - --upstream=http://172.30.90.10:8590
+      - --pass-user-headers=true
+      - --set-xauthrequest=true
+      - --reverse-proxy=true
+    networks:
+      forge-remote:
+        ipv4_address: 172.30.90.2
+
+  forge-caddy:
+    profiles: ["remote"]
+    image: caddy:2-alpine
+    container_name: forge-caddy
+    restart: unless-stopped
+    volumes:
+      - ../deploy/remote/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - forge-auth
+    networks:
+      forge-remote:
+        ipv4_address: 172.30.90.3
+
+  forge-tunnel:
+    profiles: ["remote"]
+    image: cloudflare/cloudflared:latest
+    container_name: forge-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - forge-caddy
+    networks:
+      forge-remote:
+        ipv4_address: 172.30.90.4
+
+volumes:
+  forge-data:
+
+networks:
+  forge-remote:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.90.0/24

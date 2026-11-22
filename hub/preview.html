@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge Preview</title>
+<style>
+  :root { --bg: #1b1d21; --panel: #26292f; --text: #e6e6e6; --muted: #9aa0a6; --accent: #e8a838; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #view { position: fixed; inset: 0; }
+  header { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px;
+    align-items: center; flex-wrap: wrap; pointer-events: none; }
+  header > * { pointer-events: auto; }
+  .card { background: var(--panel); border-radius: 8px; padding: 8px 12px; }
+  select, input, button { font: inherit; color: var(--text); background: #33373e;
+    border: 1px solid #444a52; border-radius: 6px; padding: 6px 8px; }
+  button { cursor: pointer; }
+  #info { color: var(--muted); }
+  #info b { color: var(--text); }
+  #status { margin-left: auto; color: var(--muted); }
+  #status.live::before { content: "● "; color: #6abf69; }
+  #status.down::before { content: "● "; color: #d9534f; }
+  #flash { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #1b1d21; font-weight: 600; padding: 8px 16px;
+    border-radius: 8px; opacity: 0; transition: opacity .3s; }
+  #flash.show { opacity: 1; }
+  #login { position: fixed; inset: 0; display: none; place-items: center; }
+  #login form { display: grid; gap: 8px; width: min(360px, calc(100% - 32px)); }
+  #empty { position: fixed; inset: 0; display: none; place-items: center; color: var(--muted); }
+  #lights { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 4px; padding: 4px;
+    flex-wrap: wrap; max-width: calc(100% - 24px); }
+  #lights button { background: transparent; border-color: transparent; color: var(--muted); }
+  #lights button:hover { color: var(--text); }
+  #gridBtn { margin-left: 8px; }
+  #dims { position: fixed; right: 12px; bottom: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  @media (max-width: 720px) { #dims { bottom: 64px; } }
+  #lights button[aria-pressed="true"] { background: #3d424a; color: var(--text); border-color: #555b63; }
+  #lights span { align-self: center; padding: 0 6px 0 4px; color: var(--muted); }
+  #printers { color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pitem.busy::before { content: "● "; color: var(--accent); }
+  .pitem.idle::before { content: "● "; color: #6abf69; }
+  .pitem.err::before { content: "● "; color: #d9534f; }
+  #printBtn { background: var(--accent); color: #1b1d21; border-color: var(--accent); font-weight: 600; }
+  #printBtn:disabled { background: #33373e; color: var(--muted); border-color: #444a52; cursor: not-allowed; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid #444a52; border-radius: 10px;
+    padding: 20px; width: min(440px, calc(100% - 32px)); }
+  dialog::backdrop { background: rgb(0 0 0 / .6); }
+  dialog h2 { margin: 0 0 12px; font-size: 18px; }
+  dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 16px; }
+  dialog dt { color: var(--muted); }
+  dialog dd { margin: 0; }
+  #code { font: 600 24px/1 ui-monospace, Menlo, monospace; letter-spacing: 4px; color: var(--accent); }
+  .hint { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
+  dialog label.check { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  dialog .go { background: var(--accent); color: #1b1d21; border-color: var(--accent); font-weight: 600; }
+  dialog .go:disabled { opacity: .4; cursor: not-allowed; }
+  #printErr { color: #ff8a80; margin: 8px 0 0; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/static/three.module.min.js",
+  "three/addons/": "/static/addons/"
+} }
+</script>
+</head>
+<body>
+<div id="view"></div>
+<header>
+  <select id="project" class="card" aria-label="Project"></select>
+  <div id="info" class="card">—</div>
+  <button id="printBtn" class="card" hidden>Print…</button>
+  <div id="printers" class="card" title="Printer status">Printers: —</div>
+  <div id="status" class="card down">connecting</div>
+</header>
+<div id="empty">No preview model (model.glb) in this version.</div>
+<div id="login"><form class="card">
+  <label for="token">Hub token (owner token on LAN, or read-only web token remotely)</label>
+  <input id="token" type="password" autocomplete="off" required>
+  <button>Save</button>
+</form></div>
+<div id="flash"></div>
+<div id="dims" class="card" hidden></div>
+<div id="lights" class="card" role="group" aria-label="Lighting (L to cycle)"><span>Light</span></div>
+<dialog id="printDlg" aria-labelledby="printTitle">
+  <form method="dialog">
+    <h2 id="printTitle">Print</h2>
+    <div id="printBody"></div>
+    <p id="printErr" role="alert" hidden></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button id="printGo" class="go" value="go" disabled>Start print</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  del: (k) => { try { localStorage.removeItem(k); } catch {} },
+};
+
+let token = store.get("forgeToken");
+let current = null;
+let shown = null;
+let canPrint = false;
+let printerList = [];
+
+// --- 3D scene ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.toneMapping = THREE.NeutralToneMapping;
+$("view").appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1d21);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.0001, 100);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+const LIGHT_PRESETS = {
+  studio: { label: "Studio", hemi: 0.6, key: [1.2, [1, 1.6, 1.2]], fill: [0.4, [-1.2, 0.6, 0.8]], rim: [0.4, [0, 0.8, -1.5]] },
+  top:    { label: "Top",    hemi: 0.35, key: [1.4, [0.15, 1, 0.1]], fill: [0.2, [-1, 0.4, -0.6]], rim: [0, [0, 1, 0]] },
+  side:   { label: "Side",   hemi: 0.12, key: [1.2, [1, 0.12, 0.25]], fill: [0.08, [-1, 0.2, 0]], rim: [0, [0, 1, 0]] },
+  camera: { label: "Camera", hemi: 0.35, key: [1.2, "camera"], fill: [0.25, [-1, 1, -0.5]], rim: [0, [0, 1, 0]] },
+  flat:   { label: "Flat",   hemi: 1.6, key: [0, [0, 1, 0]], fill: [0, [0, 1, 0]], rim: [0, [0, 1, 0]] },
+};
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+const lights = { key: new THREE.DirectionalLight(0xffffff, 1), fill: new THREE.DirectionalLight(0xffffff, 1), rim: new THREE.DirectionalLight(0xffffff, 1) };
+scene.add(hemi, ...Object.values(lights));
+for (const l of Object.values(lights)) scene.add(l.target);
+let preset = LIGHT_PRESETS[store.get("forgeLight")] ? store.get("forgeLight") : "studio";
+let focus = { center: new THREE.Vector3(), radius: 1 };
+
+function placeLights() {
+  const p = LIGHT_PRESETS[preset];
+  hemi.intensity = p.hemi;
+  for (const name of ["key", "fill", "rim"]) {
+    const [intensity, dir] = p[name];
+    const l = lights[name];
+    l.intensity = intensity;
+    const d = dir === "camera"
+      ? camera.position.clone().sub(focus.center).normalize()
+      : new THREE.Vector3(...dir).normalize();
+    l.position.copy(focus.center).addScaledVector(d, focus.radius * 4);
+    l.target.position.copy(focus.center);
+  }
+}
+
+function setPreset(name) {
+  preset = name;
+  store.set("forgeLight", name);
+  for (const b of $("lights").querySelectorAll("button[data-preset]"))
+    b.setAttribute("aria-pressed", String(b.dataset.preset === name));
+  placeLights();
+}
+
+for (const [name, p] of Object.entries(LIGHT_PRESETS)) {
+  const b = document.createElement("button");
+  b.type = "button"; b.dataset.preset = name; b.textContent = p.label;
+  b.addEventListener("click", () => setPreset(name));
+  $("lights").appendChild(b);
+}
+{
+  const b = document.createElement("button");
+  b.type = "button"; b.id = "gridBtn"; b.textContent = "Grid";
+  b.addEventListener("click", () => setGrid(!showGrid));
+  $("lights").appendChild(b);
+}
+addEventListener("keydown", (e) => {
+  if (e.target.closest("input, select")) return;
+  if (e.key.toLowerCase() === "g") { setGrid(!showGrid); flash(`Grid: ${showGrid ? "on" : "off"}`); }
+  if (e.key.toLowerCase() === "l") {
+    const names = Object.keys(LIGHT_PRESETS);
+    setPreset(names[(names.indexOf(preset) + 1) % names.length]);
+    flash(`Light: ${LIGHT_PRESETS[preset].label}`);
+  }
+});
+controls.addEventListener("change", () => { if (LIGHT_PRESETS[preset].key[1] === "camera") placeLights(); });
+setPreset(preset);
+
+let model = null;
+const PLATE = 0.256;
+const grid = new THREE.Group();
+scene.add(grid);
+let showGrid = store.get("forgeGrid") !== "0";
+function setGrid(on) {
+  showGrid = on;
+  store.set("forgeGrid", on ? "1" : "0");
+  grid.visible = on;
+  $("dims").hidden = !on || !model;
+  $("gridBtn").setAttribute("aria-pressed", String(on));
+}
+setGrid(showGrid);
+
+const minorStep = (size) => [0.001, 0.002, 0.005, 0.01, 0.02].find((s) => s >= Math.max(size.x, size.y, size.z) / 10) ?? 0.05;
+
+function buildGrid(box) {
+  grid.clear();
+  const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.length() / 2, 0.001), y = box.min.y - radius * 0.002;
+  const minor = minorStep(size), major = minor * 10, half = PLATE / 2;
+  const near = Math.min(half, Math.max(radius * 3, major));
+  const lines = (pts, color) => {
+    const g = new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(...p)));
+    grid.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color })));
+  };
+  const square = (step, extent, lift) => {
+    const pts = [], n = Math.floor(extent / step + 1e-6);
+    for (let i = -n; i <= n; i++) {
+      const o = i * step;
+      pts.push([c.x - extent, y + lift, c.z + o], [c.x + extent, y + lift, c.z + o],
+               [c.x + o, y + lift, c.z - extent], [c.x + o, y + lift, c.z + extent]);
+    }
+    return pts;
+  };
+  lines(square(minor, near, 0), 0x2c2f34);
+  lines(square(major, half, radius * 0.0005), 0x474b52);
+  const k = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c.x + a * half, y + radius * 0.001, c.z + b * half]);
+  lines([k[0], k[1], k[1], k[2], k[2], k[3], k[3], k[0]], 0x8a8f96);
+  const a = radius * 1.4, o = [c.x, y + radius * 0.0015, c.z];
+  lines([o, [o[0] + a, o[1], o[2]]], 0xd94c4c);
+  lines([o, [o[0], o[1], o[2] - a]], 0x59bf66);
+  lines([o, [o[0], o[1] + a, o[2]]], 0x598cf2);
+  const mm = (m) => (Math.round(m * 10000) / 10).toFixed(1);
+  $("dims").textContent = `${mm(size.x)} × ${mm(size.z)} × ${mm(size.y)} mm · grid ${mm(minor)} mm`;
+  $("dims").hidden = !showGrid;
+}
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+function frame(obj, keepView) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.length() / 2, 0.001);
+  buildGrid(box);
+  focus = { center, radius };
+  placeLights();
+  if (keepView) return;
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1.2).normalize().multiplyScalar(radius * 3));
+  camera.near = radius / 100; camera.far = Math.max(radius * 100, PLATE * 10);
+  camera.updateProjectionMatrix();
+  placeLights();
+}
+
+// --- API ---
+async function api(path, asBlob) {
+  const r = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+  if (r.status === 401) { askToken(); throw new Error("token"); }
+  if (!r.ok) throw new Error(`${r.status} ${path}`);
+  return asBlob ? r.blob() : r.json();
+}
+
+async function call(method, path, body) {
+  const r = await fetch(path, { method, headers: { Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  return { ok: r.ok, status: r.status, data };
+}
+
+function askToken() {
+  store.del("forgeToken"); token = null;
+  $("login").style.display = "grid";
+}
+$("login").querySelector("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  token = $("token").value.trim();
+  store.set("forgeToken", token);
+  $("login").style.display = "none";
+  start();
+});
+
+function flash(text) {
+  $("flash").textContent = text;
+  $("flash").classList.add("show");
+  setTimeout(() => $("flash").classList.remove("show"), 2500);
+}
+
+async function loadProjects() {
+  const projects = await api("/projects");
+  const sel = $("project");
+  const wanted = current || decodeURIComponent(location.hash.slice(1)) || store.get("forgeProject");
+  sel.innerHTML = "";
+  for (const p of projects) sel.add(new Option(`${p.name} (v${p.latest})`, p.name));
+  if (!projects.length) { $("info").textContent = "No projects yet — run `forge push`"; return; }
+  sel.value = projects.some((p) => p.name === wanted) ? wanted : projects[0].name;
+  current = sel.value;
+}
+
+async function loadReportBadge(proj, ver) {
+  const rep = await call("GET", `/projects/${proj}/versions/${ver}/report`);
+  if (proj !== current || ver !== shown) return;
+  if (rep.ok && Array.isArray(rep.data.assumptions) && rep.data.assumptions.length && $("info").dataset.base) {
+    $("info").innerHTML = $("info").dataset.base + ` · <span>${rep.data.assumptions.length} assumption(s)</span>`;
+  }
+}
+
+async function show(keepView) {
+  if (!current) return;
+  const meta = await api(`/projects/${current}/versions/latest`);
+  const time = new Date(meta.created_at).toLocaleString();
+  const base = `<b>v${meta.version}</b> · ${esc(time)}${meta.note ? " · " + esc(meta.note) : ""}`;
+  $("info").dataset.base = base;
+  $("info").innerHTML = base;
+  location.hash = current;
+  store.set("forgeProject", current);
+  const hasGlb = meta.files.some((f) => f.name === "model.glb");
+  $("printBtn").hidden = !canPrint || !printerList.length || !meta.files.some((f) => f.name.endsWith(".gcode.3mf"));
+  updatePrintButton();
+  $("empty").style.display = hasGlb ? "none" : "grid";
+  if (model) { scene.remove(model); model = null; }
+  shown = meta.version;
+  loadReportBadge(current, meta.version);
+  if (!hasGlb) return;
+  const blob = await api(`/projects/${current}/versions/${meta.version}/files/model.glb`, true);
+  const url = URL.createObjectURL(blob);
+  const gltf = await new GLTFLoader().loadAsync(url);
+  URL.revokeObjectURL(url);
+  model = gltf.scene;
+  model.traverse((o) => { if (o.material) { o.material.metalness = 0; o.material.roughness = 0.6; } });
+  scene.add(model);
+  frame(model, keepView);
+}
+
+$("project").addEventListener("change", (e) => { current = e.target.value; show(false); });
+
+// --- Live SSE ---
+async function listen() {
+  for (let delay = 1000; ; delay = Math.min(delay * 2, 30000)) {
+    try {
+      const r = await fetch("/events", { headers: { Authorization: `Bearer ${token}` } });
+      if (r.status === 401) { askToken(); return; }
+      if (!r.ok) throw new Error(r.status);
+      $("status").className = "card live"; $("status").textContent = "live";
+      delay = 1000;
+      const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += value;
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+          const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+          if (line) onEvent(JSON.parse(line.slice(6)));
+        }
+      }
+    } catch (e) { console.warn("SSE", e); }
+    $("status").className = "card down"; $("status").textContent = "disconnected, retrying";
+    await new Promise((res) => setTimeout(res, delay));
+  }
+}
+
+async function onEvent(ev) {
+  if (ev.type === "print") {
+    flash(`Dispatched ${ev.project} v${ev.version} (${ev.printer_id || "printer"})`);
+    pollPrinters(true);
+    return;
+  }
+  if (ev.type !== "version") return;
+  await loadProjects();
+  if (ev.project === current && ev.version !== shown) {
+    await show(true);
+    flash(`${ev.project} v${ev.version} arrived`);
+  }
+}
+
+// --- Multi-printer status & Print dialog ---
+const dlg = $("printDlg");
+let lastPrintInfo = null;
+function printError(text) { $("printErr").textContent = text; $("printErr").hidden = !text; }
+const isIdle = (p) => !p.error && ["IDLE", "FINISH", "FAILED"].includes(p.gcode_state);
+
+function updatePrintButton() {
+  const anyIdle = printerList.some(isIdle);
+  const btn = $("printBtn");
+  btn.disabled = !anyIdle;
+  btn.title = anyIdle ? "Print this version" : "No idle printer available";
+  const pre = [...$("printBody").querySelectorAll(".pre")];
+  const sel = $("targetPrinter");
+  const chosen = sel ? printerList.find((p) => p.id === sel.value) : printerList[0];
+  const chosenOk = chosen && isIdle(chosen) && (!lastPrintInfo || (
+    (!lastPrintInfo.printer_model || chosen.model === lastPrintInfo.printer_model) &&
+    (!lastPrintInfo.nozzle || chosen.nozzle === lastPrintInfo.nozzle)
+  ));
+  $("printGo").disabled = !chosenOk || !pre.length || !pre.every((x) => x.checked);
+}
+
+$("printBtn").addEventListener("click", async () => {
+  const ver = shown, proj = current;
+  $("printTitle").textContent = `Print: ${proj} v${ver}`;
+  $("printGo").disabled = true; $("printGo").hidden = false; printError("");
+  $("printBody").innerHTML = "<p class='hint'>Loading print summary…</p>";
+  dlg.dataset.target = JSON.stringify([proj, ver]);
+  dlg.showModal();
+  const r = await call("GET", `/projects/${proj}/versions/${ver}/print`);
+  if (!r.ok) { $("printGo").hidden = true; $("printBody").innerHTML = ""; printError(r.data.detail || `Error ${r.status}`); return; }
+  const i = r.data;
+  lastPrintInfo = i;
+  const opts = printerList.map((p) => {
+    const compat = (!i.printer_model || p.model === i.printer_model) && (!i.nozzle || p.nozzle === i.nozzle);
+    const label = `${p.name} (${p.model} ${p.nozzle}mm)` + (!compat ? " — incompatible" : !isIdle(p) ? " — busy" : "");
+    return `<option value="${esc(p.id)}" ${!compat || !isIdle(p) ? "disabled" : ""}>${esc(label)}</option>`;
+  }).join("");
+  $("printBody").innerHTML = `
+    <dl>
+      <dt>Duration</dt><dd>~${esc(i.minutes)} min</dd>
+      <dt>Filament</dt><dd>${i.grams != null ? esc(i.grams) + " g" : "-"}</dd>
+      <dt>Plate</dt><dd>${esc(i.bed_type || "-")}</dd>
+      <dt>Sliced for</dt><dd>${esc(i.printer_model || "-")} (${esc(i.nozzle || "-")} mm)</dd>
+      <dt>Target</dt><dd><select id="targetPrinter">${opts}</select></dd>
+    </dl>
+    <div>Print code: <span id="code">${esc(i.code)}</span></div>
+    <p class="hint">Give this single-use code to your AI agent or press Start print below.</p>
+    <label class="check"><input type="checkbox" class="pre"> Build plate is empty, clean, and matches the sliced plate</label>
+    <label class="check"><input type="checkbox" class="pre"> Correct filament is loaded</label>`;
+  for (const c of $("printBody").querySelectorAll(".pre, #targetPrinter")) c.addEventListener("change", updatePrintButton);
+  updatePrintButton();
+});
+
+$("printGo").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const [proj, ver] = JSON.parse(dlg.dataset.target);
+  const pid = $("targetPrinter")?.value;
+  $("printGo").disabled = true; $("printGo").textContent = "Sending…"; printError("");
+  const r = await call("POST", `/projects/${proj}/versions/${ver}/print`, pid ? { printer_id: pid } : {});
+  $("printGo").textContent = "Start print";
+  if (r.ok) { dlg.close(); flash(`Started: ${proj} v${ver} on ${r.data.printer_id}`); pollPrinters(true); }
+  else { printError(r.data.detail || `Error ${r.status}`); pollPrinters(true); }
+});
+
+let pollTimer = null;
+async function pollPrinters(now) {
+  clearTimeout(pollTimer);
+  let anyBusy = false;
+  if (!document.hidden || now) {
+    try {
+      printerList = await api("/printers");
+      const el = $("printers");
+      if (!printerList.length) {
+        el.textContent = "Preview-only (no printers configured)";
+      } else {
+        el.innerHTML = printerList.map((p) => {
+          if (p.error) return `<span class="pitem err" title="${esc(p.error)}">${esc(p.name)}: offline</span>`;
+          const busy = ["RUNNING", "PREPARE", "PAUSE", "SLICING"].includes(p.gcode_state);
+          if (busy) anyBusy = true;
+          const cls = busy ? "busy" : "idle";
+          const txt = busy
+            ? `${p.name}: ${p.gcode_state} ${p.mc_percent ?? 0}% (${p.mc_remaining_time ?? "?"}m)`
+            : `${p.name}: ${p.gcode_state || "idle"}`;
+          return `<span class="pitem ${cls}">${esc(txt)}</span>`;
+        }).join("");
+      }
+    } catch (e) { console.warn(e); }
+    updatePrintButton();
+  }
+  pollTimer = setTimeout(pollPrinters, anyBusy ? 10000 : 30000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollPrinters(true); });
+
+async function start() {
+  try {
+    const me = await api("/me");
+    canPrint = me.can_print;
+    if (me.remote) flash("Remote: read-only preview");
+  } catch (e) { console.warn(e); }
+  await pollPrinters(true);
+  try { await loadProjects(); await show(false); } catch (e) { console.warn(e); }
+  listen();
+}
+
+if (token) start(); else askToken();
+</script>
+</body>
+</html>

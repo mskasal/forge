@@ -1,0 +1,26 @@
+# Read-only remote preview proxy for Forge Hub.
+# Copy to deploy/remote/Caddyfile and point your Cloudflare Tunnel to http://forge-caddy:8080.
+# Defense in depth: both Caddy and hub/app.py independently enforce this GET-only allowlist.
+
+:8080 {
+	@readonly {
+		method GET
+		path / /preview /events /me /printer /printers /projects /static/* /projects/*/versions/* /projects/*/versions/*/summary /projects/*/versions/*/report /projects/*/versions/*/files/model.glb
+	}
+
+	@oauth {
+		path /oauth2/*
+	}
+
+	handle @oauth {
+		reverse_proxy forge-auth:4180
+	}
+
+	handle @readonly {
+		reverse_proxy forge-auth:4180
+	}
+
+	handle {
+		respond "Remote access is strictly read-only preview" 403
+	}
+}
