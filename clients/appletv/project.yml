@@ -1,0 +1,33 @@
+name: Forge
+options:
+  deploymentTarget:
+    tvOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Local.xcconfig
+  Release: Local.xcconfig
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Forge:
+    type: application
+    platform: tvOS
+    sources:
+      - Forge
+    info:
+      path: Forge/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Forge connects to your local Forge Hub to display 3D models and printer status.
+    settings:
+      base:
+        PRODUCT_NAME: Forge
+        INFOPLIST_KEY_CFBundleDisplayName: Forge
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "3"
