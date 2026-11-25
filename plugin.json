@@ -1,0 +1,17 @@
+{
+  "name": "forge",
+  "displayName": "Forge CAD",
+  "version": "0.1.0",
+  "description": "Low-token parametric 3D CAD with Build123d, automated FDM printability checks, offline 3D web/Apple TV preview, headless Blender studio renders, and guarded multi-printer dispatch.",
+  "logo": "docs/media/icon.svg",
+  "author": {
+    "name": "Samed Kasal",
+    "url": "https://github.com/mskasal"
+  },
+  "repository": "https://github.com/mskasal/forge",
+  "suggestedPrompts": [
+    "Design a parametric enclosure with Build123d and run forge print_scan",
+    "Initialize a new hardware part with forge init and confirm SPEC.md",
+    "Render a headless studio hero shot and exploded view with forge render"
+  ]
+}

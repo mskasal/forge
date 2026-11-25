@@ -74,6 +74,8 @@ def test_fdm_current_scales_with_nozzle(tmp_path, monkeypatch):
 def test_get_slicer_none_and_bambu_gcode_safety():
     assert get_slicer(config_mod.SlicerConfig(backend="none")) is None
     assert get_slicer(config_mod.SlicerConfig(backend="bambu")).name == "bambu"
+    assert get_slicer(config_mod.SlicerConfig(backend="orca")).name == "orca"
+    assert get_slicer(config_mod.SlicerConfig(backend="orcaslicer")).name == "orca"
     with pytest.raises(ValueError, match="Unknown slicer backend"):
         get_slicer(config_mod.SlicerConfig(backend="unknown-slicer"))
 

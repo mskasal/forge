@@ -34,4 +34,8 @@ def get_slicer(cfg: SlicerConfig | None = None) -> Slicer | None:
         from forge.slicers.bambu import BambuStudioSlicer
 
         return BambuStudioSlicer(conf)
-    raise ValueError(f"Unknown slicer backend {backend!r}; supported: none, bambu")
+    if backend in ("orca", "orcaslicer", "orca_slicer"):
+        from forge.slicers.orca import OrcaSlicer
+
+        return OrcaSlicer(conf)
+    raise ValueError(f"Unknown slicer backend {backend!r}; supported: none, bambu, orca")

@@ -13,7 +13,11 @@ from forge import components as comp_mod
 from forge.init import init as forge_init
 from forge.layout import arrange_plate, place_on_bed
 from forge.mechanisms import (
+    button_plunger,
     cantilever_strain,
+    heatset_boss,
+    light_pipe_channel,
+    oring_groove,
     pcb_standoff,
     prism_xy,
     prism_yz,
@@ -107,6 +111,38 @@ def test_mechanisms_geometry_and_bounds():
     assert p1.bounding_box().min.Z == pytest.approx(2.0) and p1.bounding_box().max.Z == pytest.approx(5.0)
     p2 = prism_yz([(0, 0), (5, 0), (0, 5)], x0=1.0, width=4.0)
     assert p2.bounding_box().min.X == pytest.approx(1.0) and p2.bounding_box().max.X == pytest.approx(5.0)
+
+    # Heat-set insert boss
+    for thread in ("M2", "M2.5", "M3", "M4"):
+        boss = heatset_boss(thread)
+        assert boss.is_valid and len(boss.solids()) == 1
+        assert boss.bounding_box().min.Z == pytest.approx(0.0, abs=1e-3)
+    with pytest.raises(ValueError, match="unsupported heat-set thread"):
+        heatset_boss("M99")
+    with pytest.raises(ValueError, match="hole depth"):
+        heatset_boss("M3", depth=2.0)
+    with pytest.raises(ValueError, match="boss wall"):
+        heatset_boss("M3", outer_d=5.0)
+
+    # Tactile button plunger
+    btn = button_plunger(14.0, 5.0, 1.0, travel=0.8, stem_d=3.0, stem_h=2.0)
+    assert btn.is_valid and len(btn.solids()) == 1
+    assert btn.bounding_box().max.Z == pytest.approx(3.0, abs=1e-3)
+    with pytest.raises(ValueError, match="bending strain"):
+        button_plunger(6.0, 5.0, 2.0, travel=2.0)
+
+    # LED light-pipe channel
+    lp = light_pipe_channel(3.2, bore_d=2.0, collar_d=4.0, collar_h=1.2)
+    assert lp.is_valid and lp.bounding_box().size.Z == pytest.approx(3.25, abs=0.1)
+    with pytest.raises(ValueError, match="collar_d"):
+        light_pipe_channel(3.0, bore_d=2.0, collar_d=1.5)
+
+    # O-ring / gasket groove
+    og = oring_groove(inner_d=20.0, cord_d=2.0)
+    assert og.is_valid and len(og.solids()) == 1
+    assert og.bounding_box().min.Z == pytest.approx(0.0, abs=1e-3)
+    with pytest.raises(ValueError, match="squeeze"):
+        oring_groove(inner_d=20.0, cord_d=2.0, squeeze=0.5)
 
 
 def test_forge_init_scaffolds_params_and_isolated_imports(tmp_path, monkeypatch):

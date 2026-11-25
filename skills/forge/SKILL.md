@@ -32,7 +32,7 @@ Before writing geometry for a new part or new component, resolve and confirm in 
    - `forge.styles`: `load`, `shell`, `grille`, `label`, `panel`, `ribs`
    - `forge.layout`: `place_on_bed`, `arrange_plate`
    - `forge.validate`: `assert_fdm_params`, `assert_clearance`, `print_scan`
-   - `forge.mechanisms`: `teardrop_hole`, `pcb_standoff`, `snap_cantilever`, `cantilever_strain`, `usbc_cutout`, `prism_xy`, `prism_yz`
+   - `forge.mechanisms`: `teardrop_hole`, `pcb_standoff`, `snap_cantilever`, `cantilever_strain`, `usbc_cutout`, `heatset_boss`, `button_plunger`, `light_pipe_channel`, `oring_groove`, `prism_xy`, `prism_yz`
    - `forge.components`: shared measured/datasheet component library (`forge components`)
 4. **Fail fast with `assert`s:** run `assert_fdm_params()` in `params.py` and `assert_clearance()` in assembly checks before meshing or rendering.
 
@@ -58,6 +58,7 @@ Before writing geometry for a new part or new component, resolve and confirm in 
      ```bash
      forge push <forge-name> --plate textured|smooth -m "what changed"
      ```
+   - **Optional studio visuals (requires Blender):** `forge render <forge-name>` (`--exploded`, `--turntable`, `--transparent`).
 4. **Summarize concisely:** what changed, key outer dimensions, assumptions, print orientation, and (if sliced) estimated time/filament.
 
 ## 5. Printing & Post-Print
