@@ -72,8 +72,8 @@ nozzle_mm = 0.4
 layer_mm = 0.2
 
 [slicer]
-backend = "none"                       # "none" (preview + STEP/STL) or "bambu"
-# Used only when backend = "bambu" (requires Bambu Studio installed):
+backend = "none"                       # "none", "bambu" (Bambu Studio), or "orca" (OrcaSlicer — macOS & Linux)
+# Used only when backend = "bambu" or "orca":
 machine = "Bambu Lab A1 0.4 nozzle"
 process = "0.20mm Standard @BBL A1"
 filament = "Bambu PLA Matte @BBL A1"

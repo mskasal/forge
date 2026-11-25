@@ -93,6 +93,18 @@ def main() -> None:
     p.add_argument("name")
     p.add_argument("--plate", help="build plate key (e.g. textured, smooth)")
 
+    p = sub.add_parser("render", help="headless Blender studio render (hero shot, exploded, or turntable)")
+    p.add_argument("name")
+    p.add_argument("--exploded", action="store_true", help="separate multi-part STLs along +Z")
+    p.add_argument("--turntable", action="store_true", help="render a 360° turntable video (requires ffmpeg)")
+    p.add_argument("--color", default="#2b2e33", help='material hex color (default: "#2b2e33")')
+    p.add_argument("--transparent", action="store_true", help="transparent PNG background (no floor)")
+    p.add_argument("--engine", choices=("cycles", "eevee"), default="cycles", help="Blender render engine")
+    p.add_argument("--samples", type=int, default=64, help="Cycles sample count (default: 64)")
+    p.add_argument("--width", type=int, default=1920, help="output width in px (default: 1920)")
+    p.add_argument("--height", type=int, default=1080, help="output height in px (default: 1080)")
+    p.add_argument("--frames", type=int, default=36, help="turntable frame count (default: 36)")
+
     p = sub.add_parser("serve", help="start a local Forge Hub + offline 3D preview server")
     p.add_argument("--lan", action="store_true", help="bind 0.0.0.0 for LAN devices (Apple TV / phones)")
     p.add_argument("--port", type=int, default=8590, help="HTTP port (default: 8590)")
@@ -139,6 +151,22 @@ def main() -> None:
             sys.exit("No slicer configured (slicer.backend = 'none' in config.toml).")
         out = slicer.slice_project(args.name, args.plate)
         print(f"Sliced: {out}")
+    elif args.cmd == "render":
+        from forge.render import render_studio
+
+        out = render_studio(
+            args.name,
+            exploded=args.exploded,
+            turntable=args.turntable,
+            color=args.color,
+            transparent=args.transparent,
+            engine=args.engine,
+            samples=args.samples,
+            width=args.width,
+            height=args.height,
+            frames=args.frames,
+        )
+        print(f"Rendered: {out}")
     elif args.cmd == "serve":
         from forge.serve import serve
 

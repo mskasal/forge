@@ -116,7 +116,10 @@ def slicer_check() -> None:
     if slicer.available():
         ok(f"slicer backend: {slicer.name} (ready)")
     else:
-        bad(f"slicer backend {slicer.name!r} unavailable", "Install Bambu Studio or set slicer.backend = 'none'")
+        bad(
+            f"slicer backend {slicer.name!r} unavailable",
+            "Install Bambu Studio or OrcaSlicer, or set slicer.backend = 'none'",
+        )
 
 
 def _get(url: str, token: str, path: str, timeout: float = 10):
