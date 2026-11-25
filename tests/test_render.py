@@ -39,7 +39,11 @@ def test_orca_slicer_env_discovery(tmp_path, monkeypatch):
 
 
 def test_render_helpers_and_script_generation(tmp_path, monkeypatch):
-    assert render_mod.hex_to_rgba("#ff0080") == pytest.approx((1.0, 0.0, 128 / 255.0, 1.0))
+    rgba = render_mod.hex_to_rgba("#ff0080")
+    assert rgba[0] == pytest.approx(1.0)
+    assert rgba[1] == pytest.approx(0.0)
+    assert 0.21 < rgba[2] < 0.22  # sRGB 0x80 (~0.502) -> linear ~0.216
+    assert rgba[3] == 1.0
     with pytest.raises(ValueError, match="Expected #RRGGBB"):
         render_mod.hex_to_rgba("red")
 

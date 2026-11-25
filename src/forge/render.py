@@ -27,12 +27,17 @@ def find_blender() -> Path | None:
     return Path(found) if found else None
 
 
+def _srgb_to_linear(c: float) -> float:
+    """Convert an sRGB channel in [0, 1] to linear RGB for Blender Principled BSDF."""
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
 def hex_to_rgba(color: str) -> tuple[float, float, float, float]:
-    """Convert #RRGGBB hex string to linear-ish sRGB RGBA tuple in [0, 1]."""
+    """Convert #RRGGBB hex string to linear RGBA tuple in [0, 1] for Blender Cycles."""
     raw = color.strip().lstrip("#")
     if len(raw) != 6:
         raise ValueError(f"Expected #RRGGBB color, got {color!r}")
-    r, g, b = (int(raw[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    r, g, b = (_srgb_to_linear(int(raw[i : i + 2], 16) / 255.0) for i in (0, 2, 4))
     return (r, g, b, 1.0)
 
 
@@ -107,16 +112,16 @@ bb_max = Vector((max(v.x for v in corners), max(v.y for v in corners), max(v.z f
 center = (bb_min + bb_max) * 0.5
 radius = max((bb_max - bb_min).length * 0.5, 0.01)
 
-# Subtle matte floor unless transparent
+# Subtle matte studio floor unless transparent
 if not SPEC["transparent"]:
-    bpy.ops.mesh.primitive_plane_add(size=radius * 20.0, location=(center.x, center.y, bb_min.z - 0.0002))
+    bpy.ops.mesh.primitive_plane_add(size=radius * 80.0, location=(center.x, center.y, bb_min.z - 0.00005))
     floor = bpy.context.active_object
     fmat = bpy.data.materials.new(name="StudioFloor")
     fmat.use_nodes = True
     fbsdf = fmat.node_tree.nodes.get("Principled BSDF")
     if fbsdf:
-        fbsdf.inputs["Base Color"].default_value = (0.90, 0.90, 0.92, 1.0)
-        fbsdf.inputs["Roughness"].default_value = 0.85
+        fbsdf.inputs["Base Color"].default_value = (0.76, 0.77, 0.79, 1.0)
+        fbsdf.inputs["Roughness"].default_value = 0.88
     floor.data.materials.append(fmat)
 
 # Soft neutral world
@@ -125,13 +130,26 @@ scene.world = world
 world.use_nodes = True
 bg = world.node_tree.nodes.get("Background")
 if bg:
-    bg.inputs["Color"].default_value = (0.94, 0.94, 0.96, 1.0)
-    bg.inputs["Strength"].default_value = 0.45
+    bg.inputs["Color"].default_value = (0.82, 0.83, 0.86, 1.0)
+    bg.inputs["Strength"].default_value = 0.35
 
-# 3-point studio area lights
-def add_light(name, loc, energy, size):
+# Camera aimed at center (set clip_start for mm-scale parts!)
+cam_data = bpy.data.cameras.new("StudioCam")
+cam_data.lens = 50.0
+cam_data.clip_start = max(radius * 0.01, 0.0005)
+cam_data.clip_end = max(radius * 200.0, 100.0)
+cam = bpy.data.objects.new("StudioCam", cam_data)
+scene.collection.objects.link(cam)
+scene.camera = cam
+
+dist = radius * 3.6
+elev = math.radians(30.0)
+
+# 3-point studio area lights scaled physically to scene distance
+def add_light(name, loc, intensity, size):
     data = bpy.data.lights.new(name=name, type="AREA")
-    data.energy = energy * (radius * 10.0) ** 2
+    d = (loc - center).length
+    data.energy = intensity * (d * d)
     data.size = size * radius
     obj = bpy.data.objects.new(name=name, object_data=data)
     scene.collection.objects.link(obj)
@@ -139,19 +157,19 @@ def add_light(name, loc, energy, size):
     direction = center - obj.location
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
-add_light("Key", center + Vector((radius * 2.4, -radius * 2.2, radius * 2.6)), 35.0, 2.0)
-add_light("Fill", center + Vector((-radius * 2.6, -radius * 1.4, radius * 1.4)), 14.0, 3.0)
-add_light("Rim", center + Vector((0.0, radius * 2.8, radius * 2.0)), 22.0, 2.0)
+add_light("Key", center + Vector((radius * 2.6, -radius * 2.4, radius * 2.8)), 9.0, 2.2)
+add_light("Fill", center + Vector((-radius * 2.8, -radius * 1.6, radius * 1.6)), 3.2, 3.2)
+add_light("Rim", center + Vector((0.0, radius * 3.0, radius * 2.2)), 5.5, 2.0)
 
-# Camera aimed at center
-cam_data = bpy.data.cameras.new("StudioCam")
-cam_data.lens = 50.0
-cam = bpy.data.objects.new("StudioCam", cam_data)
-scene.collection.objects.link(cam)
-scene.camera = cam
-
-dist = radius * 3.1
-elev = math.radians(26.0)
+# Color management (AgX / Filmic)
+try:
+    scene.view_settings.view_transform = "AgX"
+except Exception:
+    try:
+        scene.view_settings.view_transform = "Filmic"
+    except Exception:
+        pass
+scene.view_settings.exposure = 0.0
 
 def place_camera(azimuth_deg):
     az = math.radians(azimuth_deg)
