@@ -10,7 +10,6 @@ struct ForgeView: View {
     @State private var playbackSpeed: PlaybackSpeed = .normal
     @State private var asmProgress: Float = 1
     @State private var inspecting = false
-    @State private var showRevisionSheet = false
     @State private var revisionText = ""
     @State private var revisionBanner: String?
     @State private var confirmPrint = false
@@ -78,25 +77,6 @@ struct ForgeView: View {
                 showsGrid: showsGrid
             )
             .environment(forge)
-        }
-        .sheet(isPresented: $showRevisionSheet) {
-            RevisionSheet(
-                project: forge.selectedProject ?? "",
-                version: forge.selectedVersion,
-                sessionConnected: forge.sessionConnected,
-                isSubmitting: forge.isSubmittingRevision,
-                text: $revisionText
-            ) {
-                let prompt = revisionText
-                Task {
-                    let res = await forge.submitRevision(prompt: prompt)
-                    revisionBanner = res.message
-                    if res.ok {
-                        revisionText = ""
-                        showRevisionSheet = false
-                    }
-                }
-            }
         }
         .confirmationDialog(confirmTitle, isPresented: $confirmPrint, titleVisibility: .visible) {
             Button("Start print") { Task { result = await forge.startPrint() } }
@@ -624,41 +604,6 @@ private struct InspectView: View {
             }
         }
         .onExitCommand { dismiss() }
-    }
-}
-
-private struct RevisionSheet: View {
-    let project: String
-    let version: Int?
-    let sessionConnected: Bool
-    let isSubmitting: Bool
-    @Binding var text: String
-    let onSend: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack {
-                Label("Request revision", systemImage: "mic.fill").font(.title3.bold())
-                Spacer()
-                Text(sessionConnected ? "Chat session connected" : "Will queue on Hub")
-                    .font(.caption.bold())
-                    .foregroundStyle(sessionConnected ? .green : .secondary)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(.quaternary, in: .capsule)
-            }
-            Text("Hold the Siri button on your remote while editing to dictate a change for \(project)\(version.map { " v\($0)" } ?? "").")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            TextField("e.g. Make the lid 2 mm thicker and soften the corners", text: $text)
-            HStack(spacing: 16) {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button(isSubmitting ? "Sending…" : "Send revision") { onSend() }
-                    .disabled(isSubmitting || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(48)
-        .frame(maxWidth: 1000)
     }
 }
 
