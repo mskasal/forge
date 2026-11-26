@@ -5,7 +5,13 @@ struct ForgeView: View {
     @AppStorage("forgeLight") private var presetName = LightPreset.studio.rawValue
     @AppStorage("forgeShowsGrid") private var showsGrid = true
     @State private var orbit = OrbitState()
+    @State private var viewMode: ViewMode = .assembly
+    @State private var isPlaying = false
+    @State private var playbackSpeed: PlaybackSpeed = .normal
+    @State private var asmProgress: Float = 1
     @State private var inspecting = false
+    @State private var revisionText = ""
+    @State private var revisionBanner: String?
     @State private var confirmPrint = false
     @State private var result: (ok: Bool, message: String)?
 
@@ -41,10 +47,36 @@ struct ForgeView: View {
             .padding(.vertical, 36)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .onChange(of: forge.selectedProject) { orbit = OrbitState() }
+        .onChange(of: forge.selectedProject) {
+            orbit = OrbitState()
+            viewMode = .assembly
+            isPlaying = false
+            asmProgress = 1
+        }
+        .task(id: isPlaying) {
+            guard isPlaying else { return }
+            while !Task.isCancelled && isPlaying {
+                let steps = max(1, forge.assembly?.steps.filter(\.isAnimated).count ?? 1)
+                let duration = max(2.4, Float(steps) * 1.4)
+                asmProgress += (1.0 / 60.0) * playbackSpeed.rawValue / duration
+                if asmProgress >= 1 { asmProgress = 0 }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
         .fullScreenCover(isPresented: $inspecting) {
-            InspectView(file: forge.modelFile, title: inspectTitle, orbit: $orbit, presetName: $presetName, showsGrid: showsGrid)
-                .environment(forge)
+            InspectView(
+                file: forge.modelFile,
+                title: inspectTitle,
+                assembly: forge.assembly,
+                orbit: $orbit,
+                presetName: $presetName,
+                viewMode: $viewMode,
+                isPlaying: $isPlaying,
+                speed: $playbackSpeed,
+                progress: $asmProgress,
+                showsGrid: showsGrid
+            )
+            .environment(forge)
         }
         .confirmationDialog(confirmTitle, isPresented: $confirmPrint, titleVisibility: .visible) {
             Button("Start print") { Task { result = await forge.startPrint() } }
@@ -98,7 +130,17 @@ struct ForgeView: View {
             Button { inspecting = forge.modelFile != nil } label: {
                 ZStack {
                     if !inspecting {
-                        ForgeModelView(file: forge.modelFile, orbit: orbit, preset: preset, showsGrid: showsGrid)
+                        ForgeModelView(
+                            file: forge.modelFile,
+                            orbit: orbit,
+                            preset: preset,
+                            assembly: forge.assembly,
+                            viewMode: viewMode,
+                            isPlaying: isPlaying,
+                            speed: playbackSpeed,
+                            progress: asmProgress,
+                            showsGrid: showsGrid
+                        )
                     }
                     if forge.modelFile == nil {
                         if forge.isLoadingModel {
@@ -150,6 +192,27 @@ struct ForgeView: View {
             .buttonStyle(ViewerButtonStyle())
 
             HStack(spacing: 12) {
+                if let asm = forge.assembly, asm.hasPlate || asm.hasAnimation {
+                    if asm.hasPlate {
+                        Button(viewMode == .assembly ? "Assembly" : "Print Plate") {
+                            viewMode = viewMode == .assembly ? .plate : .assembly
+                            if viewMode == .plate { isPlaying = false }
+                        }
+                        .buttonStyle(ChipStyle(isSelected: viewMode == .plate))
+                    }
+                    if asm.hasAnimation {
+                        Button {
+                            if viewMode == .plate { viewMode = .assembly }
+                            if !isPlaying && asmProgress >= 0.99 { asmProgress = 0 }
+                            isPlaying.toggle()
+                        } label: {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        }
+                        .buttonStyle(ChipStyle(isSelected: isPlaying))
+                        Button(playbackSpeed.label) { playbackSpeed = playbackSpeed.next }
+                            .buttonStyle(ChipStyle())
+                    }
+                }
                 ForEach(LightPreset.allCases) { item in
                     Button(item.label) { presetName = item.rawValue }
                         .buttonStyle(ChipStyle(isSelected: item == preset))
@@ -233,6 +296,41 @@ struct ForgeView: View {
                     .frame(maxWidth: .infinity)
             }
             .disabled(!forge.canPrint)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Voice revision", systemImage: "mic.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(forge.sessionConnected ? "Chat listening" : "Queues on Hub")
+                        .font(.caption2.bold())
+                        .foregroundStyle(forge.sessionConnected ? .green : .secondary)
+                }
+                TextField("Hold Siri & speak to revise…", text: $revisionText)
+                    .disabled(forge.selectedProject == nil || forge.isSubmittingRevision)
+                    .onSubmit {
+                        let prompt = revisionText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !prompt.isEmpty else { return }
+                        Task {
+                            let res = await forge.submitRevision(prompt: prompt)
+                            revisionBanner = res.message
+                            if res.ok { revisionText = "" }
+                        }
+                    }
+            }
+
+            if let latestRev = forge.revisions.first {
+                Label(
+                    "\(latestRev.status.capitalized): \(latestRev.prompt)",
+                    systemImage: forge.sessionConnected ? "bolt.horizontal.circle.fill" : "clock"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            } else if let banner = revisionBanner {
+                Text(banner).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
 
             if let blocker = forge.printBlocker {
                 Label(blocker, systemImage: "lock.fill")
@@ -418,8 +516,13 @@ struct ForgeView: View {
 private struct InspectView: View {
     let file: URL?
     let title: String
+    let assembly: AssemblySpec?
     @Binding var orbit: OrbitState
     @Binding var presetName: String
+    @Binding var viewMode: ViewMode
+    @Binding var isPlaying: Bool
+    @Binding var speed: PlaybackSpeed
+    @Binding var progress: Float
     let showsGrid: Bool
 
     @State private var view = OrbitState()
@@ -433,13 +536,25 @@ private struct InspectView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            ForgeModelView(file: file, orbit: view, preset: preset, showsGrid: showsGrid, labelInset: showHelp ? 140 : 50)
-                .ignoresSafeArea()
+            ForgeModelView(
+                file: file,
+                orbit: view,
+                preset: preset,
+                assembly: assembly,
+                viewMode: viewMode,
+                isPlaying: isPlaying,
+                speed: speed,
+                progress: progress,
+                showsGrid: showsGrid,
+                labelInset: showHelp ? 140 : 50
+            )
+            .ignoresSafeArea()
         }
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.callout.bold())
-                Text("Light: \(preset.label)").font(.caption2).foregroundStyle(.secondary)
+                Text("\(viewMode.label) · \(speed.label) · Light: \(preset.label)")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 18).padding(.vertical, 10)
             .background(.ultraThinMaterial, in: .rect(cornerRadius: 14))
@@ -447,11 +562,11 @@ private struct InspectView: View {
         .overlay(alignment: .bottom) {
             if showHelp {
                 HStack(spacing: 28) {
-                    Label("Swipe: orbit", systemImage: "hand.draw")
-                    Label("Up/Down click: zoom", systemImage: "plus.magnifyingglass")
+                    Label("Swipe: 360° orbit", systemImage: "hand.draw")
+                    Label("Up/Down: zoom", systemImage: "plus.magnifyingglass")
                     Label("Left/Right: 45°", systemImage: "arrow.left.and.right")
                     Label("Center: reset", systemImage: "scope")
-                    Label("Play/Pause: light", systemImage: "playpause")
+                    Label(assembly?.hasAnimation == true ? "Play/Pause: assembly" : "Play/Pause: light", systemImage: "playpause")
                 }
                 .font(.callout)
                 .padding(.horizontal, 32).padding(.vertical, 16)
@@ -479,7 +594,15 @@ private struct InspectView: View {
         }
         .onDisappear { touch.stop(); orbit = view }
         .task { try? await Task.sleep(for: .seconds(6)); withAnimation { showHelp = false } }
-        .onPlayPauseCommand { presetName = preset.next.rawValue }
+        .onPlayPauseCommand {
+            if assembly?.hasAnimation == true {
+                if viewMode == .plate { viewMode = .assembly }
+                if !isPlaying && progress >= 0.99 { progress = 0 }
+                isPlaying.toggle()
+            } else {
+                presetName = preset.next.rawValue
+            }
+        }
         .onExitCommand { dismiss() }
     }
 }

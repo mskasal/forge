@@ -43,7 +43,7 @@ def test_health_auth_capabilities_and_offline_static_assets(hub_client):
 
     caps = client.get("/capabilities", headers=_auth("tok-owner"))
     assert caps.status_code == 200
-    assert set(caps.json()["capabilities"]) >= {"report", "multi_printer"}
+    assert set(caps.json()["capabilities"]) >= {"report", "multi_printer", "assembly", "revisions"}
 
     # Vendored Three.js assets served offline, path traversal blocked
     r_three = client.get("/static/three.module.min.js")
@@ -133,6 +133,7 @@ def test_remote_read_only_enforces_web_token_identity_and_route_allowlist(tmp_pa
             ("files", ("model.glb", b"glbdata", "model/gltf-binary")),
             ("files", ("part.step", b"ISO-10303-21;", "application/octet-stream")),
             ("files", ("report.json", b'{"ok": true}', "application/json")),
+            ("files", ("assembly.json", b'{"version": 1, "steps": []}', "application/json")),
         ],
         data={"note": "v1"},
     ).status_code == 201
@@ -150,12 +151,69 @@ def test_remote_read_only_enforces_web_token_identity_and_route_allowlist(tmp_pa
     assert remote.get("/printers", headers={**email_hdr, **_auth("tok-web")}).status_code == 200
     assert remote.get("/projects/case/versions/latest/report", headers={**email_hdr, **_auth("tok-web")}).status_code == 200
     assert remote.get("/projects/case/versions/latest/files/model.glb", headers={**email_hdr, **_auth("tok-web")}).status_code == 200
+    assert remote.get("/projects/case/versions/v1/files/assembly.json", headers={**email_hdr, **_auth("tok-web")}).status_code == 200
 
     # Owner token MUST be rejected remotely (403)
     assert remote.get("/projects", headers={**email_hdr, **_auth("tok-owner")}).status_code == 403
 
-    # Non-allowlisted files (STEP), print codes, and all POSTs MUST be rejected remotely (403)
+    # Non-allowlisted files (STEP), print codes, revisions, and all POSTs MUST be rejected remotely (403)
     assert remote.get("/projects/case/versions/latest/files/part.step", headers={**email_hdr, **_auth("tok-web")}).status_code == 403
     assert remote.get("/projects/case/versions/latest/print", headers={**email_hdr, **_auth("tok-web")}).status_code == 403
     assert remote.post("/projects/case/versions/latest/print", headers={**email_hdr, **_auth("tok-web")}).status_code == 403
     assert remote.post("/projects/case/versions", headers={**email_hdr, **_auth("tok-web")}).status_code == 403
+    assert remote.get("/projects/case/revisions", headers={**email_hdr, **_auth("tok-web")}).status_code == 403
+    assert remote.post(
+        "/projects/case/revisions",
+        headers={**email_hdr, **_auth("tok-owner")},
+        json={"prompt": "remote attempt"},
+    ).status_code == 403
+
+
+def test_revisions_queue_lan_permissions_and_lifecycle(hub_client):
+    _, client = hub_client
+
+    # web (read-only) and agent cannot submit revisions; only trusted (owner/appletv) can
+    assert client.post(
+        "/projects/demo/revisions",
+        headers=_auth("tok-web"),
+        json={"prompt": "nope"},
+    ).status_code == 403
+    assert client.post(
+        "/projects/demo/revisions",
+        headers=_auth("tok-agent"),
+        json={"prompt": "nope"},
+    ).status_code == 403
+
+    # appletv submits a voice-dictated revision
+    r_create = client.post(
+        "/projects/demo/revisions",
+        headers=_auth("tok-tv"),
+        json={"prompt": "Make lid 2 mm thicker", "version": 1, "source": "appletv"},
+    )
+    assert r_create.status_code == 201
+    rev = r_create.json()
+    assert rev["status"] == "queued"
+    assert rev["by"] == "appletv"
+    assert rev["session_connected"] is False
+
+    # agent lists queued revisions and marks running -> done
+    r_list = client.get("/projects/demo/revisions", headers=_auth("tok-agent"))
+    assert r_list.status_code == 200
+    assert len(r_list.json()["revisions"]) == 1
+
+    r_run = client.post(
+        f"/projects/demo/revisions/{rev['id']}/status",
+        headers=_auth("tok-agent"),
+        json={"status": "running"},
+    )
+    assert r_run.status_code == 200
+    assert r_run.json()["status"] == "running"
+
+    r_done = client.post(
+        f"/projects/demo/revisions/{rev['id']}/status",
+        headers=_auth("tok-agent"),
+        json={"status": "done", "result_version": 2, "note": "Lid +2 mm"},
+    )
+    assert r_done.status_code == 200
+    assert r_done.json()["status"] == "done"
+    assert r_done.json()["result_version"] == 2

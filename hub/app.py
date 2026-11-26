@@ -20,6 +20,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -48,8 +49,8 @@ PROXY_HEADERS = ("cf-connecting-ip", "cf-ray", "x-forwarded-for", "forwarded", "
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 ALLOWED_EXT = {".step", ".stp", ".stl", ".3mf", ".png", ".glb", ".usdz", ".py"}
-ALLOWED_EXACT = {"report.json"}
-CAPABILITIES = ["report", "multi_printer"]
+ALLOWED_EXACT = {"report.json", "assembly.json"}
+CAPABILITIES = ["report", "multi_printer", "assembly", "revisions"]
 
 OWNER = os.environ.get("FORGE_OWNER_ROLE") or str(_HUB_SECTION.get("owner_role") or "owner")
 TRUSTED = {OWNER, "appletv"}
@@ -73,6 +74,7 @@ REMOTE_ROUTES = [
         rf"/projects/{_P}/versions/{_V}/summary",
         rf"/projects/{_P}/versions/{_V}/report",
         rf"/projects/{_P}/versions/{_V}/files/model\.glb",
+        rf"/projects/{_P}/versions/{_V}/files/assembly\.json",
     )
 ]
 
@@ -81,6 +83,7 @@ REGISTRY = load_registry(DATA, _HUB_CONF)
 app = FastAPI(title="Forge Hub", docs_url=None, redoc_url=None, openapi_url=None)
 
 SUBSCRIBERS: set[asyncio.Queue] = set()
+ACTIVE_SESSIONS: dict[str, int] = {}
 SSE_PING = 15
 
 
@@ -226,9 +229,19 @@ def capabilities(_: str = Depends(auth)):
 
 
 @app.get("/events")
-async def events(request: Request, _: str = Depends(auth)):
+async def events(
+    request: Request,
+    role: str | None = None,
+    project: str | None = None,
+    who: str = Depends(auth),
+):
     q: asyncio.Queue = asyncio.Queue(maxsize=100)
     SUBSCRIBERS.add(q)
+    session_proj: str | None = None
+    if role == "session" and project and PROJECT_RE.match(project) and who != VIEWER:
+        session_proj = project
+        ACTIVE_SESSIONS[session_proj] = ACTIVE_SESSIONS.get(session_proj, 0) + 1
+        publish({"type": "session", "project": session_proj, "connected": True})
 
     async def stream():
         try:
@@ -241,6 +254,13 @@ async def events(request: Request, _: str = Depends(auth)):
                     yield ": ping\n\n"
         finally:
             SUBSCRIBERS.discard(q)
+            if session_proj is not None:
+                rem = max(0, ACTIVE_SESSIONS.get(session_proj, 1) - 1)
+                if rem == 0:
+                    ACTIVE_SESSIONS.pop(session_proj, None)
+                else:
+                    ACTIVE_SESSIONS[session_proj] = rem
+                publish({"type": "session", "project": session_proj, "connected": rem > 0})
 
     return StreamingResponse(
         stream(),
@@ -531,3 +551,109 @@ def post_print(
         return {"started": True, **entry, "minutes": round(info.get("prediction", 0) / 60)}
     finally:
         target.lock.release()
+
+
+# --- LAN-only revision queue (Apple TV / owner -> active workstation chat session) ---
+
+MAX_REVISIONS_PER_PROJECT = 50
+
+
+def _revisions_file(project: str) -> Path:
+    project_dir(project)  # validates PROJECT_RE
+    d = DATA / "revisions"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{project}.json"
+
+
+def _read_revisions(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except ValueError:
+        return []
+
+
+class RevisionCreateBody(BaseModel):
+    prompt: str
+    version: int | None = None
+    source: str = "appletv"
+
+
+class RevisionStatusBody(BaseModel):
+    status: Literal["queued", "running", "done", "failed"]
+    result_version: int | None = None
+    note: str = ""
+
+
+@app.post("/projects/{project}/revisions", status_code=201)
+def create_revision(project: str, body: RevisionCreateBody, who: str = Depends(trusted)):
+    prompt = body.prompt.strip()
+    if not prompt:
+        raise HTTPException(400, "Revision prompt must not be empty")
+    if len(prompt) > 2000:
+        raise HTTPException(400, "Revision prompt too long (max 2000 chars)")
+    path = _revisions_file(project)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    entry = {
+        "id": secrets.token_hex(6),
+        "project": project,
+        "version": body.version,
+        "prompt": prompt,
+        "source": body.source[:32],
+        "by": who,
+        "status": "queued",
+        "created_at": now,
+        "updated_at": now,
+        "result_version": None,
+        "note": "",
+    }
+    with open(path.with_suffix(".lock"), "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        items = _read_revisions(path)
+        items.insert(0, entry)
+        items = items[:MAX_REVISIONS_PER_PROJECT]
+        path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    publish({"type": "revision", "revision": entry})
+    return {**entry, "session_connected": ACTIVE_SESSIONS.get(project, 0) > 0}
+
+
+@app.get("/projects/{project}/revisions")
+def list_revisions(project: str, _: str = Depends(writer)):
+    path = _revisions_file(project)
+    return {
+        "project": project,
+        "session_connected": ACTIVE_SESSIONS.get(project, 0) > 0,
+        "revisions": _read_revisions(path),
+    }
+
+
+@app.post("/projects/{project}/revisions/{rev_id}/status")
+def update_revision_status(
+    project: str,
+    rev_id: str,
+    body: RevisionStatusBody,
+    _: str = Depends(writer),
+):
+    path = _revisions_file(project)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    updated = None
+    with open(path.with_suffix(".lock"), "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        items = _read_revisions(path)
+        for item in items:
+            if item.get("id") == rev_id:
+                item["status"] = body.status
+                item["updated_at"] = now
+                if body.result_version is not None:
+                    item["result_version"] = body.result_version
+                if body.note:
+                    item["note"] = body.note[:500]
+                updated = item
+                break
+        if updated is None:
+            raise HTTPException(404, f"Revision not found: {rev_id!r}")
+        path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    publish({"type": "revision_status", "revision": updated})
+    return updated
