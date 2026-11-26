@@ -12,32 +12,34 @@ struct ForgeView: View {
     private var preset: LightPreset { LightPreset(rawValue: presetName) ?? .studio }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 36) {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 28) {
                 header
 
                 if forge.needsSetup {
                     SetupCard()
                 } else {
                     if let error = forge.error {
-                        Label(error, systemImage: "wifi.exclamationmark").foregroundStyle(.red)
+                        Label(error, systemImage: "wifi.exclamationmark")
+                            .font(.callout)
+                            .foregroundStyle(.red)
                     }
 
-                    HStack(alignment: .top, spacing: 32) {
+                    HStack(alignment: .top, spacing: 28) {
                         viewerCard
-                        VStack(spacing: 28) {
+                        VStack(spacing: 24) {
                             printerCard
                             printCard
                         }
-                        .frame(width: 600)
+                        .frame(width: 560)
                     }
 
-                    projectsSection
-                    versionsSection
+                    libraryCard
                 }
             }
-            .padding(.horizontal, 80)
-            .padding(.vertical, 40)
+            .padding(.horizontal, 60)
+            .padding(.vertical, 36)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .onChange(of: forge.selectedProject) { orbit = OrbitState() }
         .fullScreenCover(isPresented: $inspecting) {
@@ -58,11 +60,13 @@ struct ForgeView: View {
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 24) {
+        HStack(alignment: .center, spacing: 20) {
             Text("Forge").font(.largeTitle.bold())
             healthPill
-            Spacer()
+            Spacer(minLength: 16)
             if !forge.needsSetup {
                 Button("Hub settings") { forge.resetConnection() }
                     .buttonStyle(ChipStyle())
@@ -82,13 +86,15 @@ struct ForgeView: View {
         return Label(text, systemImage: "circle.fill")
             .font(.callout.bold())
             .foregroundStyle(color)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 18)
             .padding(.vertical, 8)
-            .background(color.opacity(0.15), in: .capsule)
+            .background(color.opacity(0.16), in: .capsule)
     }
 
+    // MARK: - Top Hero: Full-Size 3D Viewer + Printer / Print
+
     private var viewerCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             Button { inspecting = forge.modelFile != nil } label: {
                 ZStack {
                     if !inspecting {
@@ -111,12 +117,21 @@ struct ForgeView: View {
                 .overlay(alignment: .topLeading) {
                     if let meta = forge.selectedMeta {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("\(meta.project) · v\(meta.version)").font(.headline)
+                            Text("\(meta.project) · v\(meta.version)")
+                                .font(.headline)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                             if let note = meta.note, !note.isEmpty {
-                                Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(note)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
                         }
-                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .frame(maxWidth: 700, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                         .background(.ultraThinMaterial, in: .rect(cornerRadius: 16))
                         .padding(20)
                     }
@@ -125,7 +140,8 @@ struct ForgeView: View {
                     if forge.modelFile != nil {
                         Label("Full screen", systemImage: "arrow.up.left.and.arrow.down.right")
                             .font(.caption.bold())
-                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                             .background(.ultraThinMaterial, in: .capsule)
                             .padding(20)
                     }
@@ -138,7 +154,7 @@ struct ForgeView: View {
                     Button(item.label) { presetName = item.rawValue }
                         .buttonStyle(ChipStyle(isSelected: item == preset))
                 }
-                Spacer()
+                Spacer(minLength: 12)
                 Button { showsGrid.toggle() } label: { Image(systemName: "grid") }
                     .buttonStyle(ChipStyle(isSelected: showsGrid))
             }
@@ -149,9 +165,12 @@ struct ForgeView: View {
 
     private var printerCard: some View {
         let status = forge.printer
-        return VStack(alignment: .leading, spacing: 18) {
+        return VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(status?.displayName ?? "Printer").font(.headline)
+                Text(status?.displayName ?? "Printer")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
                 Text(status?.state?.rawValue.capitalized ?? (forge.printers.isEmpty ? "None" : "—"))
                     .font(.headline)
@@ -170,7 +189,7 @@ struct ForgeView: View {
             if let status, status.state?.isBusy == true {
                 HStack(alignment: .firstTextBaseline) {
                     Text("\(status.percent ?? 0)%")
-                        .font(.system(size: 56, weight: .semibold, design: .rounded))
+                        .font(.system(size: 52, weight: .semibold, design: .rounded))
                         .foregroundStyle(.orange)
                     Spacer()
                     if let mins = status.remainingMinutes {
@@ -179,7 +198,10 @@ struct ForgeView: View {
                 }
                 ProgressView(value: Double(status.percent ?? 0), total: 100).tint(.orange)
             } else if let error = forge.printerError {
-                Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.secondary)
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
 
             VStack(spacing: 10) {
@@ -188,13 +210,13 @@ struct ForgeView: View {
                 factRow("Bed", tempText(status?.bedTemp, target: status?.bedTarget))
             }
         }
-        .padding(28)
+        .padding(26)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.regularMaterial, in: .rect(cornerRadius: 24))
     }
 
     private var printCard: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Print").font(.headline)
             VStack(spacing: 10) {
                 factRow("Duration", forge.summary?.minutes.map { "~\($0) min" } ?? "—")
@@ -213,64 +235,161 @@ struct ForgeView: View {
             .disabled(!forge.canPrint)
 
             if let blocker = forge.printBlocker {
-                Label(blocker, systemImage: "lock.fill").font(.caption).foregroundStyle(.secondary)
+                Label(blocker, systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else if forge.printCode != nil {
                 Text("Give this single-use code to your AI agent or press Print above.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(28)
+        .padding(26)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.regularMaterial, in: .rect(cornerRadius: 24))
     }
 
+    // MARK: - Unified Bottom Library (Projects → Versions in One Card)
+
     @ViewBuilder
-    private var projectsSection: some View {
-        if forge.projects.count > 1 {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Projects").font(.title3.bold())
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(forge.projects) { p in
-                            Button(p.name) { Task { await forge.select(project: p.name) } }
-                                .buttonStyle(ChipStyle(isSelected: p.name == forge.selectedProject))
+    private var libraryCard: some View {
+        if !forge.projects.isEmpty {
+            HStack(alignment: .top, spacing: 0) {
+                // Left pane: Projects list
+                VStack(alignment: .leading, spacing: 14) {
+                    paneHeader("Projects", count: forge.projects.count)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: 8) {
+                            ForEach(forge.projects) { p in
+                                let selected = p.name == forge.selectedProject
+                                Button {
+                                    Task { await forge.select(project: p.name) }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(p.name)
+                                            .font(.callout.weight(selected ? .semibold : .regular))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        if let latest = p.latest {
+                                            Text("v\(latest)")
+                                                .font(.caption.monospacedDigit())
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 4)
+                                                .background(.quaternary, in: .capsule)
+                                        }
+                                    }
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 14)
+                                }
+                                .buttonStyle(ListRowStyle(isSelected: selected))
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                    }
+                }
+                .padding(22)
+                .frame(width: 500)
+                .focusSection()
+
+                Divider()
+                    .padding(.vertical, 20)
+
+                // Right pane: Selected project's versions
+                VStack(alignment: .leading, spacing: 14) {
+                    paneHeader(
+                        forge.selectedProject.map { "\($0) — Versions" } ?? "Versions",
+                        count: forge.versions.count
+                    )
+                    if forge.versions.isEmpty {
+                        Spacer(minLength: 0)
+                        Text("No versions yet")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        Spacer(minLength: 0)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVStack(spacing: 8) {
+                                ForEach(Array(forge.versions.enumerated()), id: \.element.id) { index, v in
+                                    let selected = v.version == forge.selectedVersion
+                                    Button {
+                                        Task { await forge.select(version: v.version) }
+                                    } label: {
+                                        HStack(spacing: 16) {
+                                            Text("v\(v.version)")
+                                                .font(.callout.monospacedDigit().bold())
+                                                .frame(width: 64, alignment: .leading)
+                                            if index == 0 {
+                                                Text("Latest")
+                                                    .font(.caption2.weight(.semibold))
+                                                    .padding(.horizontal, 9)
+                                                    .padding(.vertical, 3)
+                                                    .background(.quaternary, in: .capsule)
+                                            }
+                                            Text(v.note?.isEmpty == false ? v.note! : "No note")
+                                                .font(.callout)
+                                                .opacity(0.85)
+                                                .lineLimit(1)
+                                                .truncationMode(.tail)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            if v.hasPrintFile {
+                                                Image(systemName: "printer.fill")
+                                                    .font(.callout)
+                                                    .opacity(0.75)
+                                            }
+                                        }
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 14)
+                                    }
+                                    .buttonStyle(ListRowStyle(isSelected: selected))
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
                         }
                     }
-                    .padding(.vertical, 8)
                 }
+                .padding(22)
+                .frame(maxWidth: .infinity)
+                .focusSection()
             }
-            .focusSection()
+            .frame(maxWidth: .infinity)
+            .frame(height: 460)
+            .background(.regularMaterial, in: .rect(cornerRadius: 24))
         }
     }
 
-    @ViewBuilder
-    private var versionsSection: some View {
-        if !forge.versions.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Versions").font(.title3.bold())
-                VStack(spacing: 8) {
-                    ForEach(forge.versions) { v in
-                        Button { Task { await forge.select(version: v.version) } } label: {
-                            HStack(spacing: 18) {
-                                Text("v\(v.version)").monospacedDigit().frame(width: 72, alignment: .leading)
-                                Text(v.note?.isEmpty == false ? v.note! : "No note").lineLimit(1)
-                                Spacer()
-                                if v.hasPrintFile { Image(systemName: "printer").foregroundStyle(.secondary) }
-                            }
-                            .padding(.horizontal, 20).padding(.vertical, 14)
-                        }
-                        .buttonStyle(ChipStyle(isSelected: v.version == forge.selectedVersion))
-                    }
-                }
+    private func paneHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.08), in: .capsule)
             }
         }
+        .padding(.horizontal, 10)
     }
+
+    // MARK: - Helpers
 
     private func factRow(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).monospacedDigit()
+            Spacer(minLength: 8)
+            Text(value)
+                .monospacedDigit()
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .font(.callout)
     }
@@ -391,6 +510,43 @@ private struct SetupCard: View {
     }
 }
 
+private struct ListRowStyle: ButtonStyle {
+    var isSelected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        StyledBody(configuration: configuration, isSelected: isSelected)
+    }
+
+    private struct StyledBody: View {
+        let configuration: Configuration
+        let isSelected: Bool
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(isFocused ? Color.black : Color.primary)
+                .background(
+                    isFocused
+                        ? Color.white
+                        : (isSelected ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.05)),
+                    in: .rect(cornerRadius: 14)
+                )
+                .overlay(alignment: .leading) {
+                    if isSelected && !isFocused {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .frame(width: 4, height: 24)
+                            .padding(.leading, 4)
+                    }
+                }
+                .scaleEffect(isFocused ? 1.02 : 1)
+                .shadow(color: isFocused ? .black.opacity(0.35) : .clear, radius: 10, y: 5)
+                .animation(.easeOut(duration: 0.14), value: isFocused)
+        }
+    }
+}
+
 private struct ViewerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { StyledBody(configuration: configuration) }
     private struct StyledBody: View {
@@ -421,13 +577,12 @@ private struct ChipStyle: ButtonStyle {
             configuration.label
                 .font(.callout.weight(isSelected ? .semibold : .regular))
                 .lineLimit(1)
-                .fixedSize()
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .foregroundStyle(isFocused ? Color.black : (isSelected ? Color.primary : Color.secondary))
-                .background(isFocused ? Color.white : Color.white.opacity(isSelected ? 0.18 : 0.06), in: .capsule)
+                .background(isFocused ? Color.white : (isSelected ? Color.white.opacity(0.18) : Color.white.opacity(0.06)), in: .capsule)
                 .scaleEffect(isFocused ? 1.05 : 1)
-                .animation(.easeOut(duration: 0.15), value: isFocused)
+                .animation(.easeOut(duration: 0.14), value: isFocused)
         }
     }
 }
