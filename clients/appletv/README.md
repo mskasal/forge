@@ -10,7 +10,8 @@ Standalone native tvOS client (`Forge`) for inspecting 3D models (`model.usdz`) 
 
 **What it does:**
 - Lists Forge Hub projects and versions on your local network.
-- Renders `model.usdz` natively with RealityKit (Siri Remote pan/orbit/zoom).
+- Renders `model.usdz` natively with RealityKit (Siri Remote pan/orbit/zoom), plus **`Assembly` / `Print Plate`** playback (`Play/Pause`, `0.5× / 1× / 2×`) and free 360° orbit during animation when `assembly.json` is present.
+- Supports **inline Siri Remote voice revisions** (`Hold Siri & speak to revise…` → press `Done` to auto-submit) with live status showing whether an active workstation chat session (`forge wait-revision <project>`) is connected.
 - Shows live status for all configured printers and lets you approve/start a print on a selected printer.
 - Stores your Hub URL in `UserDefaults` and your Hub bearer token in the Apple TV **Keychain**.
 

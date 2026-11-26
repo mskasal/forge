@@ -22,7 +22,12 @@ Describe a physical part to Claude Code, Antigravity, Gemini CLI, Codex, Cursor,
 | 1. Automated CAD & Printability Check (`forge run`) | 2. Optional Apple TV Viewer (`Forge`, tvOS RealityKit) |
 | :---: | :---: |
 | ![Forge 2x2 orthographic check render](docs/media/01-check-render.png) | ![Forge Apple TV RealityKit 3D viewer](docs/media/03-appletv-preview.jpg) |
-| Compact 768×640 2×2 render + `report.json` + layer `print_scan` | Inspect `model.usdz` with Siri Remote & approve LAN prints |
+| Compact 768×640 2×2 render + `report.json` + layer `print_scan` | 360° Assembly / Print Plate preview, Siri voice revisions & LAN print approval |
+
+### Interactive 360° Assembly Cockpit & Voice Revisions (`v0.3.0`)
+- **Assembly ↔ Print Plate preview (Web & Apple TV):** Every multi-part `forge push` generates `assembly.json` (auto bottom-up Z-axis or authored via `forge.assembly`). Play step-by-step assembly (`0.25×`–`2×`), orbit freely 360° during playback, toggle **X-Ray** / individual parts, transition smoothly to **Print Plate** (Z=0 with flip-to-print rotations), and click **Print…** on the same screen.
+- **In-browser video capture:** Record a free-orbit video (**`● Rec`**) or an automated **`360° Clip`** directly from the WebGL canvas (MP4/WebM, zero backend load) — plus optional headless Blender Cycles studio renders (`forge render`).
+- **Session-bound voice revisions (LAN-only):** Dictate changes from Apple TV (`Hold Siri & speak to revise…`) or LAN Web Preview (`🎤 Revise`) straight into your active AI coding-agent chat session via `forge wait-revision <project>` — full conversation context preserved, never printing autonomously.
 
 ---
 
@@ -62,7 +67,7 @@ Prefer manual installation? See [SETUP.md](SETUP.md) or the 60-second quickstart
 | Module | Required? | Where it runs | What it adds | Guide |
 | --- | --- | --- | --- | --- |
 | **Workstation Core** | **Yes** | Your laptop (Mac / Linux / WSL2) | `forge` CLI, Build123d helpers, `print_scan`, local offline 3D web preview (`forge serve`), multi-agent skills | [SETUP.md](SETUP.md) |
-| **Local Slicer** | Optional | Your laptop | Local `.gcode.3mf` slicing + temperature bounds check (v1: Bambu Studio CLI) | [SETUP.md](SETUP.md#2-printer--slicer-optional) |
+| **Local Slicer** | Optional | Your laptop | Local `.gcode.3mf` slicing + temperature bounds check (Bambu Studio & OrcaSlicer CLI) | [SETUP.md](SETUP.md#2-printer--slicer-optional) |
 | **Always-on Hub** | Optional | Raspberry Pi / Docker (~40 MB RAM) | 24/7 versioned model store, live SSE web preview, LAN sharing | [hub/README.md](hub/README.md) |
 | **Printer Bridge** | Optional | Hub (0..N printers) | Live status (`GET /printers`) & guarded print dispatch (v1: Bambu LAN) | [hub/README.md](hub/README.md#adding-printers-optional) |
 | **Remote Read-Only** | Optional | Hub (`--profile remote`) or Tailscale | Monitor live prints & inspect 3D models from outside home (GET-only) | [deploy/remote/README.md](deploy/remote/README.md) |

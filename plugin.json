@@ -1,8 +1,8 @@
 {
   "name": "forge",
   "displayName": "Forge CAD",
-  "version": "0.2.0",
-  "description": "Low-token parametric 3D CAD with Build123d, automated FDM printability checks, offline 3D web/Apple TV preview, headless Blender studio renders, and guarded multi-printer dispatch.",
+  "version": "0.3.1",
+  "description": "Low-token parametric 3D CAD with Build123d, automated FDM printability checks, interactive 360° assembly & print-plate preview (Web & Apple TV), session-bound voice revisions, headless Blender studio renders, and guarded multi-printer dispatch.",
   "logo": "docs/media/icon.svg",
   "author": {
     "name": "Samed Kasal",
@@ -10,8 +10,8 @@
   },
   "repository": "https://github.com/mskasal/forge",
   "suggestedPrompts": [
-    "Design a parametric enclosure with Build123d and run forge print_scan",
-    "Initialize a new hardware part with forge init and confirm SPEC.md",
+    "Design a parametric multi-part enclosure with Build123d, write assembly.json, and run forge print_scan",
+    "Push to Forge Hub and wait for my Apple TV / LAN voice revisions with forge wait-revision",
     "Render a headless studio hero shot and exploded view with forge render"
   ]
 }
