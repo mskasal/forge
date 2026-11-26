@@ -22,6 +22,7 @@ deploy/remote/allowed-emails.txt
 # Apple TV Xcode build artifacts & personal signing config
 clients/appletv/Local.xcconfig
 clients/appletv/*.xcodeproj/
+clients/appletv/Forge/Info.plist
 clients/appletv/build/
 
 # OS / editors

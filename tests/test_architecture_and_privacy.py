@@ -20,7 +20,8 @@ FORBIDDEN_LEAK_REGEXES: list[tuple[str, re.Pattern[str]]] = [
     ("hardcoded Notion link", re.compile(r"https?://(?:www\.|app\.)?notion\.(?:so|com)/")),
 ]
 
-SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "out", "build", "dist", "node_modules"}
+SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", "out", "build", "dist", "node_modules", "Forge.xcodeproj"}
+SKIP_FILES = {"Local.xcconfig", "hub.toml", "tokens", ".env", "forge.local.toml"}
 SKIP_EXTS = {".ttf", ".otf", ".png", ".jpg", ".jpeg", ".webp", ".glb", ".usdz", ".3mf", ".stl", ".step", ".pyc"}
 
 
@@ -54,7 +55,7 @@ def test_no_secrets_or_personal_paths_in_repo():
     for path in REPO_ROOT.rglob("*"):
         if any(part in SKIP_DIRS for part in path.parts):
             continue
-        if not path.is_file() or path.suffix.lower() in SKIP_EXTS:
+        if path.name in SKIP_FILES or not path.is_file() or path.suffix.lower() in SKIP_EXTS:
             continue
         if path.resolve() == self_path:
             continue

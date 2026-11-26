@@ -47,9 +47,9 @@ class ForgeConfig:
 
 
 def _read_toml(path: Path) -> dict:
-    if not path.is_file():
-        return {}
     try:
+        if not path.is_file():
+            return {}
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return {}
