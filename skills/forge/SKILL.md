@@ -51,7 +51,7 @@ Before writing geometry for a new part or new component, resolve and confirm in 
    ```
    Open `out/<forge-name>/render.png` (compact 768×640 2×2 grid) **once per milestone** (not after every small numeric tweak) to verify shape, cutouts, and no floating bodies. Run `forge.validate.print_scan` before a print-ready push.
 3. **Two-stage upload to Forge Hub (local `forge serve` or Pi/Docker):**
-   - **During visual iteration (fast — skips slicing):**
+   - **During visual iteration (fast — skips slicing; auto-generates `assembly.json` unless authored with `write_assembly()`):**
      ```bash
      forge push <forge-name> --preview -m "what changed"
      ```
@@ -68,8 +68,8 @@ Before writing geometry for a new part or new component, resolve and confirm in 
 - Before printing, remind the user: bed empty & clean, correct filament loaded, fitted build plate matches the sliced plate.
 - After printing, ask how it fit and log the result in `SPEC.md`.
 
-## 6. Interactive Apple TV / Hub Revision Loop (Session-Bound)
-When the user wants to review a pushed model on Apple TV and dictate revisions into the **current chat session**:
+## 6. Interactive Apple TV / Web LAN Revision Loop (Session-Bound)
+When the user wants to review a pushed model on Apple TV or LAN Web Preview (`🎤 Revise`) and dictate revisions into the **current chat session**:
 1. Run `forge wait-revision <forge-name>` in the background (it connects to the Hub's LAN-only SSE queue and wakes you up when a revision arrives).
 2. Apply the requested edit in `params.py` / `<part>.py`, run `forge run` + `forge push <forge-name> --preview -m "..."`.
 3. Mark the revision complete so Apple TV updates live:
