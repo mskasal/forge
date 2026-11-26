@@ -59,6 +59,30 @@
   dialog .go { background: var(--accent); color: #1b1d21; border-color: var(--accent); font-weight: 600; }
   dialog .go:disabled { opacity: .4; cursor: not-allowed; }
   #printErr { color: #ff8a80; margin: 8px 0 0; }
+  .seg { display: inline-flex; gap: 4px; padding: 4px; }
+  .seg button { background: transparent; border-color: transparent; color: var(--muted); padding: 4px 10px; }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: #3d424a; color: var(--text); border-color: #555b63; }
+  #player { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+    max-width: calc(100% - 24px); padding: 8px 12px; backdrop-filter: blur(8px);
+    background: rgb(38 41 47 / .92); border: 1px solid #3c4149; }
+  #player[hidden] { display: none; }
+  #player button { padding: 4px 8px; font-size: 13px; background: transparent; border-color: transparent; color: var(--muted); }
+  #player button:hover { color: var(--text); }
+  #player button[aria-pressed="true"] { background: #3d424a; color: var(--text); border-color: #555b63; }
+  #player button.rec-on { background: #b83227; color: #fff; border-color: #d9534f; }
+  #scrub { width: 150px; accent-color: var(--accent); cursor: pointer; }
+  #stepLabel { color: var(--text); font-size: 13px; min-width: 110px; max-width: 210px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sep { width: 1px; height: 18px; background: #444a52; }
+  #partsPop { position: fixed; left: 50%; bottom: 116px; transform: translateX(-50%);
+    max-height: 220px; overflow: auto; min-width: 220px; display: grid; gap: 4px;
+    background: rgb(38 41 47 / .96); border: 1px solid #444a52; }
+  #partsPop[hidden] { display: none; }
+  #partsPop label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+  #partsPop label:hover { background: #33373e; }
+  @media (max-width: 720px) { #player { bottom: 108px; } #partsPop { bottom: 170px; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -72,6 +96,10 @@
 <header>
   <select id="project" class="card" aria-label="Project"></select>
   <div id="info" class="card">—</div>
+  <div id="modeBar" class="card seg" role="group" aria-label="View mode" hidden>
+    <button type="button" data-mode="assembly" aria-pressed="true">Assembly</button>
+    <button type="button" data-mode="plate" aria-pressed="false">Print Plate</button>
+  </div>
   <button id="printBtn" class="card" hidden>Print…</button>
   <div id="printers" class="card" title="Printer status">Printers: —</div>
   <div id="status" class="card down">connecting</div>
@@ -84,6 +112,24 @@
 </form></div>
 <div id="flash"></div>
 <div id="dims" class="card" hidden></div>
+<div id="partsPop" class="card" hidden></div>
+<div id="player" class="card" role="group" aria-label="Assembly player" hidden>
+  <button type="button" id="playBtn" title="Play / Pause (Space)">▶</button>
+  <button type="button" id="loopBtn" aria-pressed="true" title="Loop playback">↻</button>
+  <input type="range" id="scrub" min="0" max="1" step="0.002" value="1" aria-label="Assembly progress">
+  <span id="stepLabel">Assembled</span>
+  <span class="sep"></span>
+  <button type="button" data-speed="0.25">0.25×</button>
+  <button type="button" data-speed="0.5">0.5×</button>
+  <button type="button" data-speed="1" aria-pressed="true">1×</button>
+  <button type="button" data-speed="2">2×</button>
+  <span class="sep"></span>
+  <button type="button" id="xrayBtn" aria-pressed="false" title="X-Ray translucency (X)">X-Ray</button>
+  <button type="button" id="partsBtn" aria-pressed="false" title="Toggle individual parts">Parts</button>
+  <span class="sep"></span>
+  <button type="button" id="recBtn" title="Record canvas video">● Rec</button>
+  <button type="button" id="rec360Btn" title="Auto 360° orbit + assembly video">360° Clip</button>
+</div>
 <div id="lights" class="card" role="group" aria-label="Lighting (L to cycle)"><span>Light</span></div>
 <dialog id="printDlg" aria-labelledby="printTitle">
   <form method="dialog">
@@ -177,7 +223,10 @@ for (const [name, p] of Object.entries(LIGHT_PRESETS)) {
   $("lights").appendChild(b);
 }
 addEventListener("keydown", (e) => {
-  if (e.target.closest("input, select")) return;
+  if (e.target.closest("input, select, textarea")) return;
+  if (e.key === " " && !$("player").hidden) { e.preventDefault(); togglePlay(); return; }
+  if (e.key.toLowerCase() === "x" && !$("player").hidden) { setXray(!xrayOn); flash(`X-Ray: ${xrayOn ? "on" : "off"}`); }
+  if (e.key.toLowerCase() === "p" && !$("modeBar").hidden) { setViewMode(viewMode === "plate" ? "assembly" : "plate"); }
   if (e.key.toLowerCase() === "g") { setGrid(!showGrid); flash(`Grid: ${showGrid ? "on" : "off"}`); }
   if (e.key.toLowerCase() === "l") {
     const names = Object.keys(LIGHT_PRESETS);
@@ -243,7 +292,294 @@ function resize() {
 }
 addEventListener("resize", resize);
 resize();
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+// --- Assembly animation, Print Plate transition, X-Ray & Video capture ---
+const MM = 0.001, DEG = Math.PI / 180;
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+let asmSpec = null;
+let partBindings = []; // { step, node, basePos, baseQuat, mats, animated }
+let viewMode = "assembly"; // "assembly" | "plate"
+let plateBlend = 0;
+let asmProgress = 1; // 0 = exploded, 1 = assembled
+let playing = false;
+let looping = true;
+let playSpeed = 1;
+let xrayOn = false;
+let lastFrameMs = performance.now();
+let recorder = null, recChunks = [], recOrbit360 = false, recStartAngle = 0, recStartDist = 0, recStartY = 0;
+
+function findPartNode(root, name) {
+  let exact = null, loose = null;
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = norm(name);
+  root.traverse((o) => {
+    if (o === root) return;
+    if (!exact && o.name === name) exact = o;
+    if (!loose && want && norm(o.name) === want) loose = o;
+  });
+  return exact || loose;
+}
+
+function bindAssembly(root, spec) {
+  asmSpec = spec;
+  partBindings = [];
+  if (!root || !spec || !Array.isArray(spec.steps)) {
+    $("modeBar").hidden = true;
+    $("player").hidden = true;
+    $("partsPop").hidden = true;
+    return;
+  }
+  const sorted = [...spec.steps].sort((a, b) => (a.step ?? 1) - (b.step ?? 1));
+  for (const step of sorted) {
+    const node = findPartNode(root, step.part);
+    if (!node) continue;
+    const mats = [];
+    node.traverse((c) => {
+      if (c.isMesh && c.material) {
+        const list = Array.isArray(c.material) ? c.material : [c.material];
+        for (const m of list) mats.push({ m, opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite });
+      }
+    });
+    const sl = step.slide_mm || [0, 0, 0];
+    const rt = step.rotate_deg || [0, 0, 0];
+    const animated = sl.some((v) => Math.abs(v) > 1e-4) || rt.some((v) => Math.abs(v) > 1e-4);
+    partBindings.push({
+      step, node, mats, animated,
+      basePos: node.position.clone(),
+      baseQuat: node.quaternion.clone(),
+    });
+  }
+  const hasPlate = partBindings.some((b) => b.step.plate);
+  const hasAnim = partBindings.some((b) => b.animated);
+  $("modeBar").hidden = !hasPlate;
+  $("player").hidden = !hasAnim && partBindings.length <= 1;
+  $("partsPop").innerHTML = partBindings.map((b, idx) =>
+    `<label><input type="checkbox" data-pidx="${idx}" checked> ${esc(b.step.label || b.step.part)}</label>`
+  ).join("");
+  for (const cb of $("partsPop").querySelectorAll("input[data-pidx]")) {
+    cb.addEventListener("change", () => {
+      const b = partBindings[Number(cb.dataset.pidx)];
+      if (b) b.node.visible = cb.checked;
+    });
+  }
+  viewMode = "assembly";
+  plateBlend = 0;
+  asmProgress = 1;
+  playing = false;
+  setXray(false);
+  updateModeUI();
+  updatePlayerUI();
+  applyTransforms();
+}
+
+function setXray(on) {
+  xrayOn = on;
+  $("xrayBtn").setAttribute("aria-pressed", String(on));
+  for (const b of partBindings) {
+    for (const rec of b.mats) {
+      rec.m.transparent = on ? true : rec.transparent;
+      rec.m.opacity = on ? 0.28 : rec.opacity;
+      rec.m.depthWrite = on ? false : rec.depthWrite;
+      rec.m.needsUpdate = true;
+    }
+  }
+}
+
+function setViewMode(mode) {
+  if (mode === "plate" && !partBindings.some((b) => b.step.plate)) return;
+  viewMode = mode;
+  if (mode === "plate") playing = false;
+  updateModeUI();
+  updatePlayerUI();
+}
+
+function updateModeUI() {
+  for (const b of $("modeBar").querySelectorAll("button[data-mode]"))
+    b.setAttribute("aria-pressed", String(b.dataset.mode === viewMode));
+}
+
+function updatePlayerUI() {
+  $("playBtn").textContent = playing ? "⏸" : "▶";
+  $("loopBtn").setAttribute("aria-pressed", String(looping));
+  $("scrub").value = String(asmProgress);
+  if (viewMode === "plate") {
+    $("stepLabel").textContent = "Print Plate (Z=0)";
+    return;
+  }
+  const anims = partBindings.filter((b) => b.animated);
+  if (!anims.length) { $("stepLabel").textContent = "Assembled"; return; }
+  if (asmProgress >= 0.999) { $("stepLabel").textContent = "Assembled"; return; }
+  if (asmProgress <= 0.001) { $("stepLabel").textContent = "Exploded"; return; }
+  const idx = Math.min(anims.length - 1, Math.floor(asmProgress * anims.length));
+  const cur = anims[idx].step;
+  $("stepLabel").textContent = `${idx + 1}/${anims.length} · ${cur.label || cur.part}`;
+}
+
+function togglePlay() {
+  if (viewMode === "plate") setViewMode("assembly");
+  if (!playing && asmProgress >= 0.995) asmProgress = 0;
+  playing = !playing;
+  updatePlayerUI();
+}
+
+const _tmpV = new THREE.Vector3(), _tmpPivot = new THREE.Vector3(), _tmpSlide = new THREE.Vector3();
+const _tmpEuler = new THREE.Euler(), _tmpQ = new THREE.Quaternion();
+const _platePos = new THREE.Vector3(), _plateQ = new THREE.Quaternion(), _plateRotQ = new THREE.Quaternion();
+
+function applyTransforms() {
+  if (!partBindings.length) return;
+  const anims = partBindings.filter((b) => b.animated);
+  const animIndex = new Map(anims.map((b, i) => [b, i]));
+  const pb = ease(plateBlend);
+
+  for (const b of partBindings) {
+    // 1. Compute assembly pose at asmProgress (0 = exploded, 1 = assembled)
+    let e = 0;
+    if (b.animated && anims.length) {
+      const k = animIndex.get(b);
+      const localT = Math.min(1, Math.max(0, (asmProgress - k / anims.length) * anims.length));
+      e = 1 - ease(localT);
+    }
+    const sl = b.step.slide_mm || [0, 0, 0];
+    const rt = b.step.rotate_deg || [0, 0, 0];
+    const pv = b.step.pivot_mm || [0, 0, 0];
+    _tmpPivot.set(pv[0] * MM, pv[1] * MM, pv[2] * MM);
+    _tmpSlide.set(sl[0] * MM * e, sl[1] * MM * e, sl[2] * MM * e);
+    _tmpEuler.set(rt[0] * DEG * e, rt[1] * DEG * e, rt[2] * DEG * e, "XYZ");
+    _tmpQ.setFromEuler(_tmpEuler);
+
+    const asmPos = _tmpV.copy(b.basePos).sub(_tmpPivot).applyQuaternion(_tmpQ).add(_tmpPivot).add(_tmpSlide);
+    const asmQuat = _tmpQ.clone().multiply(b.baseQuat);
+
+    // 2. Blend toward Print Plate pose when plateBlend > 0
+    if (pb > 0 && b.step.plate) {
+      const pr = b.step.plate.rot_deg || [0, 0, 0];
+      const pt = b.step.plate.translate_mm || [0, 0, 0];
+      _plateRotQ.setFromEuler(_tmpEuler.set(pr[0] * DEG, pr[1] * DEG, pr[2] * DEG, "XYZ"));
+      _plateQ.copy(_plateRotQ).multiply(b.baseQuat);
+      _platePos.copy(b.basePos).applyQuaternion(_plateRotQ).add(_tmpSlide.set(pt[0] * MM, pt[1] * MM, pt[2] * MM));
+      b.node.position.copy(asmPos).lerp(_platePos, pb);
+      b.node.quaternion.copy(asmQuat).slerp(_plateQ, pb);
+    } else {
+      b.node.position.copy(asmPos);
+      b.node.quaternion.copy(asmQuat);
+    }
+  }
+}
+
+function startRecording(orbit360) {
+  if (recorder && recorder.state === "recording") { recorder.stop(); return; }
+  if (typeof MediaRecorder === "undefined" || !renderer.domElement.captureStream) {
+    flash("Video recording not supported in this browser");
+    return;
+  }
+  const mimes = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"];
+  const mimeType = mimes.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const stream = renderer.domElement.captureStream(60);
+  recChunks = [];
+  recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : undefined);
+  recOrbit360 = orbit360;
+  if (orbit360) {
+    setViewMode("assembly");
+    asmProgress = 0;
+    looping = false;
+    playing = true;
+    const dx = camera.position.x - focus.center.x, dz = camera.position.z - focus.center.z;
+    recStartAngle = Math.atan2(dz, dx);
+    recStartDist = Math.hypot(dx, dz);
+    recStartY = camera.position.y;
+    updatePlayerUI();
+  }
+  recorder.ondataavailable = (ev) => { if (ev.data.size) recChunks.push(ev.data); };
+  recorder.onstop = () => {
+    recOrbit360 = false;
+    $("recBtn").classList.remove("rec-on");
+    $("recBtn").textContent = "● Rec";
+    $("rec360Btn").classList.remove("rec-on");
+    const ext = (recorder.mimeType || "").includes("mp4") ? "mp4" : "webm";
+    const blob = new Blob(recChunks, { type: recorder.mimeType || "video/webm" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `forge-${current || "model"}-v${shown || 0}.${ext}`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    flash(`Saved ${a.download}`);
+  };
+  recorder.start();
+  (orbit360 ? $("rec360Btn") : $("recBtn")).classList.add("rec-on");
+  if (!orbit360) $("recBtn").textContent = "■ Stop";
+  flash(orbit360 ? "Recording 360° assembly clip…" : "Recording… (orbit freely, click Stop when done)");
+}
+
+for (const b of $("modeBar").querySelectorAll("button[data-mode]"))
+  b.addEventListener("click", () => setViewMode(b.dataset.mode));
+$("playBtn").addEventListener("click", togglePlay);
+$("loopBtn").addEventListener("click", () => { looping = !looping; updatePlayerUI(); });
+$("scrub").addEventListener("input", (e) => {
+  if (viewMode === "plate") setViewMode("assembly");
+  playing = false;
+  asmProgress = Number(e.target.value);
+  applyTransforms();
+  updatePlayerUI();
+});
+for (const b of $("player").querySelectorAll("button[data-speed]")) {
+  b.addEventListener("click", () => {
+    playSpeed = Number(b.dataset.speed);
+    for (const o of $("player").querySelectorAll("button[data-speed]"))
+      o.setAttribute("aria-pressed", String(o === b));
+  });
+}
+$("xrayBtn").addEventListener("click", () => setXray(!xrayOn));
+$("partsBtn").addEventListener("click", () => {
+  const open = $("partsPop").hidden;
+  $("partsPop").hidden = !open;
+  $("partsBtn").setAttribute("aria-pressed", String(open));
+});
+$("recBtn").addEventListener("click", () => startRecording(false));
+$("rec360Btn").addEventListener("click", () => startRecording(true));
+
+renderer.setAnimationLoop((now) => {
+  const dt = Math.min((now - lastFrameMs) / 1000, 0.1);
+  lastFrameMs = now;
+  let dirty = false;
+  const targetPlate = viewMode === "plate" ? 1 : 0;
+  if (Math.abs(plateBlend - targetPlate) > 1e-4) {
+    const dir = targetPlate > plateBlend ? 1 : -1;
+    plateBlend = Math.min(1, Math.max(0, plateBlend + dir * dt / 0.55));
+    dirty = true;
+    if (model && (plateBlend === 0 || plateBlend === 1)) {
+      applyTransforms();
+      buildGrid(new THREE.Box3().setFromObject(model));
+    }
+  }
+  if (playing && viewMode === "assembly" && partBindings.some((b) => b.animated)) {
+    const duration = Math.max(2.4, partBindings.filter((b) => b.animated).length * 1.4);
+    asmProgress += (dt * playSpeed) / duration;
+    if (asmProgress >= 1) {
+      if (recOrbit360 && recorder && recorder.state === "recording") {
+        asmProgress = 1;
+        playing = false;
+        recorder.stop();
+      } else if (looping) {
+        asmProgress = 0;
+      } else {
+        asmProgress = 1;
+        playing = false;
+      }
+    }
+    if (recOrbit360) {
+      const ang = recStartAngle + asmProgress * Math.PI * 2;
+      camera.position.set(focus.center.x + Math.cos(ang) * recStartDist, recStartY, focus.center.z + Math.sin(ang) * recStartDist);
+      camera.lookAt(focus.center);
+      if (LIGHT_PRESETS[preset].key[1] === "camera") placeLights();
+    }
+    dirty = true;
+    updatePlayerUI();
+  }
+  if (dirty) applyTransforms();
+  controls.update();
+  renderer.render(scene, camera);
+});
 
 function frame(obj, keepView) {
   const box = new THREE.Box3().setFromObject(obj);
@@ -330,7 +666,7 @@ async function show(keepView) {
   if (model) { scene.remove(model); model = null; }
   shown = meta.version;
   loadReportBadge(current, meta.version);
-  if (!hasGlb) return;
+  if (!hasGlb) { bindAssembly(null, null); return; }
   const blob = await api(`/projects/${current}/versions/${meta.version}/files/model.glb`, true);
   const url = URL.createObjectURL(blob);
   const gltf = await new GLTFLoader().loadAsync(url);
@@ -338,6 +674,12 @@ async function show(keepView) {
   model = gltf.scene;
   model.traverse((o) => { if (o.material) { o.material.metalness = 0; o.material.roughness = 0.6; } });
   scene.add(model);
+  let spec = null;
+  if (meta.files.some((f) => f.name === "assembly.json")) {
+    try { spec = await api(`/projects/${current}/versions/${meta.version}/files/assembly.json`); }
+    catch (e) { console.warn("assembly.json", e); }
+  }
+  bindAssembly(model, spec);
   frame(model, keepView);
 }
 

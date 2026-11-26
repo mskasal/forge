@@ -59,6 +59,29 @@ struct ForgeClient: Sendable {
         try await get("printers", timeout: 12)
     }
 
+    func assembly(project: String, version: Int) async throws -> AssemblySpec {
+        try await get("projects/\(project)/versions/\(version)/files/assembly.json", timeout: 10)
+    }
+
+    func revisions(project: String) async throws -> RevisionListResponse {
+        try await get("projects/\(project)/revisions", timeout: 6)
+    }
+
+    func submitRevision(project: String, version: Int?, prompt: String) async throws -> RevisionItem {
+        var req = request(for: "projects/\(project)/revisions", timeout: 10)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Payload: Encodable {
+            let prompt: String
+            let version: Int?
+            let source: String
+        }
+        req.httpBody = try JSONEncoder().encode(Payload(prompt: prompt, version: version, source: "appletv"))
+        let (data, response) = try await Self.session.data(for: req)
+        try Self.check(response, data: data)
+        return try JSONDecoder().decode(RevisionItem.self, from: data)
+    }
+
     func startPrint(project: String, version: Int, printerId: String?) async throws -> PrintResult {
         var request = request(for: "projects/\(project)/versions/\(version)/print", timeout: 60)
         request.httpMethod = "POST"

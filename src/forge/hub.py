@@ -133,9 +133,13 @@ def push(
         if p.suffix.lower() in UPLOAD_EXT
         and not (preview and p.name.endswith(".gcode.3mf"))
     )
+    caps = hub_capabilities()
     report_path = folder / "report.json"
-    if report_path.is_file() and "report" in hub_capabilities():
+    if report_path.is_file() and "report" in caps:
         files.append(report_path)
+    asm_path = folder / "assembly.json"
+    if asm_path.is_file() and "assembly" in caps:
+        files.append(asm_path)
     if not files:
         sys.exit(f"No uploadable files found in {folder}; run `forge run` first.")
 

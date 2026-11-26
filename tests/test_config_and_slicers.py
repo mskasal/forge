@@ -99,8 +99,9 @@ def test_convert_gracefully_skips_usdz_without_pxr(tmp_path, monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     outputs = convert_mod.convert(tmp_path)
-    assert outputs == [tmp_path / "model.glb"]
+    assert outputs == [tmp_path / "model.glb", tmp_path / "assembly.json"]
     assert (tmp_path / "model.glb").stat().st_size > 0
+    assert (tmp_path / "assembly.json").stat().st_size > 0
     assert not (tmp_path / "model.usdz").exists()
 
 

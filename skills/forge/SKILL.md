@@ -31,6 +31,7 @@ Before writing geometry for a new part or new component, resolve and confirm in 
 3. **Reuse Forge built-ins first** — never rewrite boilerplate CAD helpers:
    - `forge.styles`: `load`, `shell`, `grille`, `label`, `panel`, `ribs`
    - `forge.layout`: `place_on_bed`, `arrange_plate`
+   - `forge.assembly`: `AssemblyStep`, `write_assembly`, `auto_assembly` (optional explicit assembly motion + print-plate transforms for Web & Apple TV)
    - `forge.validate`: `assert_fdm_params`, `assert_clearance`, `print_scan`
    - `forge.mechanisms`: `teardrop_hole`, `pcb_standoff`, `snap_cantilever`, `cantilever_strain`, `usbc_cutout`, `heatset_boss`, `button_plunger`, `light_pipe_channel`, `oring_groove`, `prism_xy`, `prism_yz`
    - `forge.components`: shared measured/datasheet component library (`forge components`)
@@ -66,6 +67,16 @@ Before writing geometry for a new part or new component, resolve and confirm in 
 - Print with user's single-use code: `forge print <forge-name> <version> --code <code> [--printer <id>]`.
 - Before printing, remind the user: bed empty & clean, correct filament loaded, fitted build plate matches the sliced plate.
 - After printing, ask how it fit and log the result in `SPEC.md`.
+
+## 6. Interactive Apple TV / Hub Revision Loop (Session-Bound)
+When the user wants to review a pushed model on Apple TV and dictate revisions into the **current chat session**:
+1. Run `forge wait-revision <forge-name>` in the background (it connects to the Hub's LAN-only SSE queue and wakes you up when a revision arrives).
+2. Apply the requested edit in `params.py` / `<part>.py`, run `forge run` + `forge push <forge-name> --preview -m "..."`.
+3. Mark the revision complete so Apple TV updates live:
+   ```bash
+   forge revision-status <forge-name> <revision_id> done --version <new_version>
+   ```
+4. Never start a print autonomously from a revision — always wait for the user's explicit Web/Apple TV approval or print code.
 
 ## Progressive Disclosure References
 Read only when needed:

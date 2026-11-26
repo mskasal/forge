@@ -11,6 +11,10 @@ final class ForgeStore {
     private(set) var printers: [PrinterStatus] = []
     private(set) var selectedPrinterId: String?
     private(set) var modelFile: URL?
+    private(set) var assembly: AssemblySpec?
+    private(set) var revisions: [RevisionItem] = []
+    private(set) var sessionConnected = false
+    private(set) var isSubmittingRevision = false
     private(set) var isLoadingModel = false
 
     private(set) var selectedProject: String?
@@ -126,6 +130,7 @@ final class ForgeStore {
             }
             await refreshVersions()
             await refreshPrintCode()
+            await refreshRevisions()
         } catch {
             handle(error, isPrinter: false)
         }
@@ -159,8 +164,12 @@ final class ForgeStore {
         summary = nil
         printCode = nil
         modelFile = nil
+        assembly = nil
+        revisions = []
+        sessionConnected = false
         followsLatest = true
         await refreshVersions()
+        await refreshRevisions()
     }
 
     func select(version: Int?, followLatest: Bool? = nil) async {
@@ -169,16 +178,48 @@ final class ForgeStore {
         selectedVersion = version
         summary = nil
         printCode = nil
+        assembly = nil
         guard let client, let project = selectedProject, let version,
               let meta = versions.first(where: { $0.version == version }) else {
             modelFile = nil
             return
         }
         async let summaryTask = try? client.summary(of: project, version: version)
+        async let assemblyTask: AssemblySpec? = meta.hasAssembly ? (try? await client.assembly(project: project, version: version)) : nil
         await loadModel(meta, client: client)
         let fetched = await summaryTask
-        if project == selectedProject && version == selectedVersion { summary = fetched }
+        let fetchedAssembly = await assemblyTask
+        if project == selectedProject && version == selectedVersion {
+            summary = fetched
+            assembly = fetchedAssembly
+        }
         await refreshPrintCode()
+    }
+
+    func refreshRevisions() async {
+        guard let client, let project = selectedProject else { return }
+        if let res = try? await client.revisions(project: project), project == selectedProject {
+            revisions = res.revisions
+            sessionConnected = res.sessionConnected
+        }
+    }
+
+    func submitRevision(prompt: String) async -> (ok: Bool, message: String) {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return (false, "Say or enter a revision request first.") }
+        guard let client, let project = selectedProject else { return (false, "Select a project first.") }
+        isSubmittingRevision = true
+        defer { isSubmittingRevision = false }
+        do {
+            let item = try await client.submitRevision(project: project, version: selectedVersion, prompt: trimmed)
+            await refreshRevisions()
+            let stateMsg = (item.sessionConnected ?? sessionConnected)
+                ? "Sent to active chat session."
+                : "Queued on Hub (waiting for chat session)."
+            return (true, stateMsg)
+        } catch {
+            return (false, ForgeClient.describe(error))
+        }
     }
 
     func refreshPrintCode() async {

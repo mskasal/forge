@@ -31,7 +31,80 @@ struct ForgeVersion: Decodable, Sendable, Identifiable, Hashable {
     }
 
     var hasModel: Bool { files?.contains { $0.name == "model.usdz" } ?? false }
+    var hasAssembly: Bool { files?.contains { $0.name == "assembly.json" } ?? false }
     var hasPrintFile: Bool { files?.contains { $0.name.hasSuffix(".gcode.3mf") } ?? false }
+}
+
+struct AssemblyPlate: Decodable, Sendable, Equatable {
+    let translateMm: [Float]
+    let rotDeg: [Float]
+
+    enum CodingKeys: String, CodingKey {
+        case translateMm = "translate_mm"
+        case rotDeg = "rot_deg"
+    }
+}
+
+struct AssemblyStep: Decodable, Sendable, Equatable, Identifiable {
+    let part: String
+    let label: String?
+    let step: Int
+    let slideMm: [Float]
+    let rotateDeg: [Float]
+    let pivotMm: [Float]
+    let plate: AssemblyPlate?
+
+    var id: String { "\(step)-\(part)" }
+    var displayName: String { label?.isEmpty == false ? label! : part }
+    var isAnimated: Bool {
+        slideMm.contains { abs($0) > 1e-4 } || rotateDeg.contains { abs($0) > 1e-4 }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case part, label, step, plate
+        case slideMm = "slide_mm"
+        case rotateDeg = "rotate_deg"
+        case pivotMm = "pivot_mm"
+    }
+}
+
+struct AssemblySpec: Decodable, Sendable, Equatable {
+    let version: Int
+    let units: String?
+    let steps: [AssemblyStep]
+
+    var hasAnimation: Bool { steps.contains { $0.isAnimated } }
+    var hasPlate: Bool { steps.contains { $0.plate != nil } }
+}
+
+struct RevisionItem: Decodable, Sendable, Identifiable, Equatable {
+    let id: String
+    let project: String
+    let version: Int?
+    let prompt: String
+    let status: String
+    let createdAt: String?
+    let resultVersion: Int?
+    let note: String?
+    let sessionConnected: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, project, version, prompt, status, note
+        case createdAt = "created_at"
+        case resultVersion = "result_version"
+        case sessionConnected = "session_connected"
+    }
+}
+
+struct RevisionListResponse: Decodable, Sendable, Equatable {
+    let project: String
+    let sessionConnected: Bool
+    let revisions: [RevisionItem]
+
+    enum CodingKeys: String, CodingKey {
+        case project, revisions
+        case sessionConnected = "session_connected"
+    }
 }
 
 struct ForgeSummary: Decodable, Sendable {

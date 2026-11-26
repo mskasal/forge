@@ -14,6 +14,7 @@ from pathlib import Path
 
 from build123d import Color, Compound, Unit, export_gltf, import_step
 
+from forge.assembly import ensure_assembly
 from forge.check import COLORS
 
 TOL = 0.05  # mm — below FDM resolution
@@ -86,12 +87,15 @@ def write_usdz(parts, colors: list[Color], path: Path) -> bool:
 
 
 def convert(folder: Path, color: str | None = None) -> list[Path]:
-    """Generate model.glb (and model.usdz if usd-core is installed) from STEP files."""
+    """Generate model.glb, assembly.json, and optional model.usdz from STEP files."""
     parts = load_parts(folder)
     colors = part_colors(len(parts), color)
     glb, usdz = folder / "model.glb", folder / "model.usdz"
     write_glb(parts, colors, glb)
     out = [glb]
+    asm = ensure_assembly(folder, parts)
+    if asm is not None:
+        out.append(asm)
     if write_usdz(parts, colors, usdz):
         out.append(usdz)
     else:

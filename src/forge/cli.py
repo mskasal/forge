@@ -129,6 +129,17 @@ def main() -> None:
     p.add_argument("--code", required=True, help="single-use print code shown in Web/Apple TV UI")
     p.add_argument("--printer", help="target printer id (required when multiple printers exist)")
 
+    p = sub.add_parser("wait-revision", help="wait for the next LAN/Apple TV revision request for a project")
+    p.add_argument("project")
+    p.add_argument("--timeout", type=float, help="optional timeout in seconds")
+
+    p = sub.add_parser("revision-status", help="update a revision request's status on the Hub")
+    p.add_argument("project")
+    p.add_argument("revision_id")
+    p.add_argument("status", choices=("queued", "running", "done", "failed"))
+    p.add_argument("--version", type=int, help="resulting version number (when status=done)")
+    p.add_argument("--note", default="", help="optional short status note")
+
     sub.add_parser("components", help="list and validate the shared component library")
     sub.add_parser("styles", help="list and validate design languages against FDM rules")
 
@@ -179,6 +190,22 @@ def main() -> None:
         status()
     elif args.cmd == "print":
         print_version(args.project, args.version, args.code, args.printer)
+    elif args.cmd == "wait-revision":
+        from forge.revisions import wait_revision
+
+        rev = wait_revision(args.project, timeout=args.timeout)
+        print(json.dumps(rev, ensure_ascii=False))
+    elif args.cmd == "revision-status":
+        from forge.revisions import update_status
+
+        rev = update_status(
+            args.project,
+            args.revision_id,
+            args.status,
+            result_version=args.version,
+            note=args.note,
+        )
+        print(json.dumps(rev, ensure_ascii=False))
     elif args.cmd == "components":
         from forge.components import print_catalog
 

@@ -88,10 +88,39 @@ extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }
 
+enum ViewMode: String, CaseIterable, Identifiable {
+    case assembly, plate
+    var id: String { rawValue }
+    var label: String { self == .assembly ? "Assembly" : "Print Plate" }
+}
+
+enum PlaybackSpeed: Float, CaseIterable, Identifiable {
+    case slow = 0.5
+    case normal = 1.0
+    case fast = 2.0
+    var id: Float { rawValue }
+    var label: String {
+        switch self {
+        case .slow: "0.5×"
+        case .normal: "1×"
+        case .fast: "2×"
+        }
+    }
+    var next: PlaybackSpeed {
+        let all = Self.allCases
+        return all[(all.firstIndex(of: self)! + 1) % all.count]
+    }
+}
+
 struct ForgeModelView: View {
     let file: URL?
     let orbit: OrbitState
     let preset: LightPreset
+    var assembly: AssemblySpec? = nil
+    var viewMode: ViewMode = .assembly
+    var isPlaying: Bool = false
+    var speed: PlaybackSpeed = .normal
+    var progress: Float = 1
     var showsGrid = true
     var labelInset: CGFloat = 20
 
@@ -104,6 +133,7 @@ struct ForgeModelView: View {
             content.camera = .virtual
             content.add(scene.root)
         } update: { _ in
+            scene.applyAssembly(spec: assembly, mode: viewMode, progress: progress)
             scene.apply(orbit: orbit, preset: preset, showsGrid: showsGrid)
         }
         .task(id: file) {
@@ -113,6 +143,7 @@ struct ForgeModelView: View {
             do {
                 let entity = try await Entity(contentsOf: file)
                 size = scene.setModel(entity)
+                scene.applyAssembly(spec: assembly, mode: viewMode, progress: progress)
                 scene.apply(orbit: orbit, preset: preset, showsGrid: showsGrid)
             } catch {
                 loadError = "Failed to load model."
@@ -251,6 +282,7 @@ final class ForgeScene {
     let root = Entity()
     private let camera = PerspectiveCamera()
     private var model: Entity?
+    private var baseMatrices: [ObjectIdentifier: float4x4] = [:]
     private var grid: ModelEntity?
     private var center: SIMD3<Float> = .zero
     private var radius: Float = 0.05
@@ -274,9 +306,11 @@ final class ForgeScene {
         model?.removeFromParent()
         grid?.removeFromParent()
         model = entity
+        baseMatrices = [:]
         grid = nil
         guard let entity else { return nil }
         root.addChild(entity)
+        recordBaseMatrices(entity)
         let bounds = entity.visualBounds(relativeTo: root)
         center = bounds.center
         radius = max(length(bounds.extents) / 2, 0.001)
@@ -286,6 +320,68 @@ final class ForgeScene {
         root.addChild(grid)
         self.grid = grid
         return bounds.extents
+    }
+
+    private func recordBaseMatrices(_ entity: Entity) {
+        baseMatrices[ObjectIdentifier(entity)] = entity.transformMatrix(relativeTo: root)
+        for child in entity.children {
+            recordBaseMatrices(child)
+        }
+    }
+
+    private static func safeUSDName(_ raw: String) -> String {
+        String(raw.map { $0.isLetter || $0.isNumber ? $0 : "_" })
+    }
+
+    private static func cadToReality(_ v: [Float]) -> SIMD3<Float> {
+        let x = v.count > 0 ? v[0] * 0.001 : 0
+        let y = v.count > 1 ? v[1] * 0.001 : 0
+        let z = v.count > 2 ? v[2] * 0.001 : 0
+        // CAD Z-up mm -> RealityKit Y-up metres (matches ForgeGrid)
+        return [x, z, -y]
+    }
+
+    private static func cadEulerToReality(_ deg: [Float]) -> simd_quatf {
+        let rx = (deg.count > 0 ? deg[0] : 0) * .pi / 180
+        let ry = (deg.count > 1 ? deg[1] : 0) * .pi / 180
+        let rz = (deg.count > 2 ? deg[2] : 0) * .pi / 180
+        let qx = simd_quatf(angle: rx, axis: [1, 0, 0])
+        let qy = simd_quatf(angle: ry, axis: [0, 0, -1])
+        let qz = simd_quatf(angle: rz, axis: [0, 1, 0])
+        return qz * qy * qx
+    }
+
+    private static func easeInOutCubic(_ t: Float) -> Float {
+        t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+    }
+
+    func applyAssembly(spec: AssemblySpec?, mode: ViewMode, progress: Float) {
+        guard let model, let spec else { return }
+        let sorted = spec.steps.sorted { $0.step < $1.step }
+        let animSteps = sorted.filter { $0.isAnimated }
+        for step in sorted {
+            let target = model.findEntity(named: Self.safeUSDName(step.part)) ?? model.findEntity(named: step.part)
+            guard let node = target, let base = baseMatrices[ObjectIdentifier(node)] else { continue }
+            var delta = matrix_identity_float4x4
+            if mode == .plate, let plate = step.plate {
+                let q = Self.cadEulerToReality(plate.rotDeg)
+                let t = Self.cadToReality(plate.translateMm)
+                delta = Transform(scale: .one, rotation: q, translation: t).matrix
+            } else if step.isAnimated, let idx = animSteps.firstIndex(where: { $0.id == step.id }) {
+                let count = Float(max(animSteps.count, 1))
+                let localT = min(1, max(0, (progress - Float(idx) / count) * count))
+                let e = 1 - Self.easeInOutCubic(localT)
+                let slide = Self.cadToReality(step.slideMm) * e
+                let pivot = Self.cadToReality(step.pivotMm)
+                let q = Self.cadEulerToReality(step.rotateDeg.map { $0 * e })
+                let toPivot = Transform(translation: pivot).matrix
+                let fromPivot = Transform(translation: -pivot).matrix
+                let rotMat = float4x4(q)
+                let slideMat = Transform(translation: slide).matrix
+                delta = slideMat * toPivot * rotMat * fromPivot
+            }
+            node.setTransformMatrix(delta * base, relativeTo: root)
+        }
     }
 
     func apply(orbit: OrbitState, preset: LightPreset, showsGrid: Bool) {
