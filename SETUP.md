@@ -80,6 +80,18 @@ filament = "Bambu PLA Matte @BBL A1"
 default_plate = "textured"             # "textured" or "smooth"
 ```
 
+#### OrcaSlicer 2.5+ on Linux (Arch / Omarchy)
+1. Install OrcaSlicer (e.g. `yay -S orca-slicer-bin` on Arch/Omarchy).
+2. **Fetch BBL JSON profiles (OrcaSlicer 2.5+):** OrcaSlicer 2.5 packs system presets into `.opc` containers, while CLI `--load-settings` requires uncompressed JSON profiles. Fetch only the official `BBL` JSON profiles into `~/.config/OrcaSlicer/system/BBL`:
+   ```bash
+   git clone --depth 1 --filter=blob:none --sparse https://github.com/OrcaSlicer/OrcaSlicer.git /tmp/orca-bbl-profiles
+   git -C /tmp/orca-bbl-profiles sparse-checkout set resources/profiles/BBL/machine resources/profiles/BBL/process resources/profiles/BBL/filament
+   mkdir -p ~/.config/OrcaSlicer/system/BBL
+   cp -r /tmp/orca-bbl-profiles/resources/profiles/BBL/* ~/.config/OrcaSlicer/system/BBL/
+   rm -rf /tmp/orca-bbl-profiles
+   ```
+3. Set `backend = "orca"` (and your fitted `default_plate = "smooth"` or `"textured"`) in `~/.config/forge/config.toml`. Override paths with `FORGE_ORCA_CLI` / `FORGE_ORCA_PROFILES` if installed elsewhere.
+
 ### 3. Always-On Hub (Optional — Raspberry Pi / Docker)
 Run the ~40 MB RAM Hub 24/7 on a Raspberry Pi or home server with 0..N printers: see [hub/README.md](hub/README.md).
 

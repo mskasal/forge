@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forge-cad"
-version = "0.1.0"
+version = "0.2.0"
 description = "Low-token parametric 3D CAD, printability validation, local/LAN 3D preview hub, and guarded printer dispatch for AI coding agents."
 readme = "README.md"
 license = "AGPL-3.0-only"
