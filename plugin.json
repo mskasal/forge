@@ -1,7 +1,7 @@
 {
   "name": "forge",
   "displayName": "Forge CAD",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Low-token parametric 3D CAD with Build123d, automated FDM printability checks, interactive 360° assembly & print-plate preview (Web & Apple TV), session-bound voice revisions, headless Blender studio renders, and guarded multi-printer dispatch.",
   "logo": "docs/media/icon.svg",
   "author": {
