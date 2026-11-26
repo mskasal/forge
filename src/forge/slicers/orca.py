@@ -44,19 +44,23 @@ def _find_profiles(cli_path: Path | None) -> Path | None:
     candidates = [
         Path.home() / ".config/OrcaSlicer/system/BBL",
         Path.home() / ".var/app/io.github.softfever.OrcaSlicer/config/OrcaSlicer/system/BBL",
+        Path("/opt/orca-slicer/resources/profiles/BBL"),
         Path("/usr/share/OrcaSlicer/profiles/BBL"),
         Path("/usr/share/orca-slicer/profiles/BBL"),
     ]
     if cli_path is not None:
+        resolved = cli_path.resolve()
         candidates.extend(
             [
+                resolved.parent.parent / "resources/profiles/BBL",
+                resolved.parent.parent / "Resources/profiles/BBL",
                 cli_path.parent.parent / "Resources/profiles/BBL",
                 cli_path.parent.parent / "share/OrcaSlicer/profiles/BBL",
                 cli_path.parent.parent / "share/orca-slicer/profiles/BBL",
             ]
         )
     for candidate in candidates:
-        if candidate.is_dir():
+        if (candidate / "machine").is_dir():
             return candidate
     return None
 
