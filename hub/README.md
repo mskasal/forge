@@ -25,12 +25,16 @@ EOF
 chmod 600 hub/config/tokens hub/config/hub.toml
 ```
 
-| Token role | Preview & status | Upload versions | View print codes | Start print | Accepted remotely? |
-| --- | --- | --- | --- | --- | --- |
-| `owner` | Yes | Yes | Yes | Yes (direct) | **No (403)** |
-| `appletv` | Yes | Yes | Yes | Yes (direct) | **No (403)** |
-| `agent` | Yes | Yes | **No (403)** | Only with single-use `--code` | **No (403)** |
-| `web` | Yes | **No (403)** | **No (403)** | **No (403)** | Yes (GET-only) |
+| Token role | Preview & status | Upload versions | Submit revisions | View print codes | Start print | Accepted remotely? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `owner` | Yes | Yes | Yes | Yes | Yes (direct) | **No (403)** |
+| `appletv` | Yes | Yes | Yes | Yes | Yes (direct) | **No (403)** |
+| `agent` | Yes | Yes | Read/status only | **No (403)** | Only with single-use `--code` | **No (403)** |
+| `web` | Yes | **No (403)** | **No (403)** | **No (403)** | **No (403)** | Yes (GET-only) |
+
+### Interactive Assembly & LAN Revision Queue
+- Versions containing `assembly.json` unlock the **`Assembly` / `Print Plate`** toggle, step-by-step playback (`0.25×`–`2×`), **X-Ray**, per-part visibility toggles, and browser video capture (**`● Rec`** / **`360° Clip`**) in `/preview`.
+- On LAN, `owner` and `appletv` tokens can submit voice/text revision prompts (`POST /projects/<name>/revisions`), which the Hub queues and broadcasts over SSE to an active workstation chat session running `forge wait-revision <name>`. Revision endpoints are strictly blocked remotely (`403`).
 
 ### 2. Start the Hub
 ```bash

@@ -8,11 +8,12 @@ Monitor live print progress and inspect 3D models (`model.glb`) from outside you
 
 | Capability | Over Remote Gateway |
 | --- | --- |
-| 3D web preview (`/preview`, `/static/*.js`, `model.glb`) | **Allowed** (`GET`, OAuth login + `web` token) |
+| 3D web preview (`/preview`, `/static/*.js`, `model.glb`, `assembly.json`) | **Allowed** (`GET`, OAuth login + `web` token) |
 | Live print progress (`/printers`, `/events`, `/summary`, `/report`) | **Allowed** (`GET`, OAuth login + `web` token) |
 | Download STEP / STL / `.gcode.3mf` | **Blocked (403)** |
 | View print codes (`GET .../print`) | **Blocked (403)** |
 | Start a print (`POST .../print`) or upload versions (`POST .../versions`) | **Blocked (403)** |
+| Voice/LAN revision queue (`GET`/`POST .../revisions`) | **Blocked (403)** |
 | Using `owner`, `appletv`, or `agent` tokens remotely | **Blocked (403 — `web` token only)** |
 
 Enforced independently at **two layers**:

@@ -5,7 +5,7 @@
 :8080 {
 	@readonly {
 		method GET
-		path / /preview /events /me /printer /printers /projects /static/* /projects/*/versions/* /projects/*/versions/*/summary /projects/*/versions/*/report /projects/*/versions/*/files/model.glb
+		path / /preview /events /me /printer /printers /projects /static/* /projects/*/versions/* /projects/*/versions/*/summary /projects/*/versions/*/report /projects/*/versions/*/files/model.glb /projects/*/versions/*/files/assembly.json
 	}
 
 	@oauth {
