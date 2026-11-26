@@ -317,11 +317,28 @@ struct ForgeView: View {
             }
             .disabled(!forge.canPrint)
 
-            Button { showRevisionSheet = true } label: {
-                Label("Request revision…", systemImage: "mic.fill")
-                    .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Voice revision", systemImage: "mic.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(forge.sessionConnected ? "Chat listening" : "Queues on Hub")
+                        .font(.caption2.bold())
+                        .foregroundStyle(forge.sessionConnected ? .green : .secondary)
+                }
+                TextField("Hold Siri & speak to revise…", text: $revisionText)
+                    .disabled(forge.selectedProject == nil || forge.isSubmittingRevision)
+                    .onSubmit {
+                        let prompt = revisionText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !prompt.isEmpty else { return }
+                        Task {
+                            let res = await forge.submitRevision(prompt: prompt)
+                            revisionBanner = res.message
+                            if res.ok { revisionText = "" }
+                        }
+                    }
             }
-            .disabled(forge.selectedProject == nil)
 
             if let latestRev = forge.revisions.first {
                 Label(

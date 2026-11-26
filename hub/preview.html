@@ -63,26 +63,36 @@
   .seg button { background: transparent; border-color: transparent; color: var(--muted); padding: 4px 10px; }
   .seg button:hover { color: var(--text); }
   .seg button[aria-pressed="true"] { background: #3d424a; color: var(--text); border-color: #555b63; }
-  #player { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%);
+  #player { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 20;
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
-    max-width: calc(100% - 24px); padding: 8px 12px; backdrop-filter: blur(8px);
-    background: rgb(38 41 47 / .92); border: 1px solid #3c4149; }
+    max-width: calc(100% - 24px); padding: 8px 14px; backdrop-filter: blur(10px);
+    background: rgb(32 35 41 / .94); border: 1px solid #4c525c; box-shadow: 0 8px 28px rgb(0 0 0 / .45); }
   #player[hidden] { display: none; }
-  #player button { padding: 4px 8px; font-size: 13px; background: transparent; border-color: transparent; color: var(--muted); }
+  #player button { padding: 5px 10px; font-size: 13px; background: transparent; border-color: transparent; color: var(--muted); }
   #player button:hover { color: var(--text); }
   #player button[aria-pressed="true"] { background: #3d424a; color: var(--text); border-color: #555b63; }
+  #player button#playBtn { background: var(--accent); color: #1b1d21; border-color: var(--accent); font-weight: 600; padding: 5px 12px; }
+  #player button#playBtn:hover { filter: brightness(1.08); color: #1b1d21; }
   #player button.rec-on { background: #b83227; color: #fff; border-color: #d9534f; }
-  #scrub { width: 150px; accent-color: var(--accent); cursor: pointer; }
-  #stepLabel { color: var(--text); font-size: 13px; min-width: 110px; max-width: 210px;
+  #scrub { width: 160px; accent-color: var(--accent); cursor: pointer; }
+  #stepLabel { color: var(--text); font-size: 13px; min-width: 110px; max-width: 220px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sep { width: 1px; height: 18px; background: #444a52; }
-  #partsPop { position: fixed; left: 50%; bottom: 116px; transform: translateX(-50%);
+  #partsPop { position: fixed; left: 50%; bottom: 124px; transform: translateX(-50%); z-index: 25;
     max-height: 220px; overflow: auto; min-width: 220px; display: grid; gap: 4px;
     background: rgb(38 41 47 / .96); border: 1px solid #444a52; }
   #partsPop[hidden] { display: none; }
   #partsPop label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
   #partsPop label:hover { background: #33373e; }
-  @media (max-width: 720px) { #player { bottom: 108px; } #partsPop { bottom: 170px; } }
+  #revBar { position: fixed; left: 50%; top: 68px; transform: translateX(-50%); z-index: 25;
+    display: flex; align-items: center; gap: 8px; width: min(620px, calc(100% - 24px));
+    background: rgb(32 35 41 / .95); border: 1px solid #4c525c; box-shadow: 0 8px 28px rgb(0 0 0 / .45); }
+  #revBar[hidden] { display: none; }
+  #revInput { flex: 1; min-width: 160px; }
+  #revMicBtn.listening { background: #b83227; color: #fff; border-color: #d9534f; }
+  #revStatus { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  #revStatus.live { color: #6abf69; }
+  @media (max-width: 720px) { #player { bottom: 112px; } #partsPop { bottom: 176px; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -100,6 +110,7 @@
     <button type="button" data-mode="assembly" aria-pressed="true">Assembly</button>
     <button type="button" data-mode="plate" aria-pressed="false">Print Plate</button>
   </div>
+  <button id="revToggleBtn" class="card" title="Request revision (V)" hidden>🎤 Revise</button>
   <button id="printBtn" class="card" hidden>Print…</button>
   <div id="printers" class="card" title="Printer status">Printers: —</div>
   <div id="status" class="card down">connecting</div>
@@ -112,9 +123,16 @@
 </form></div>
 <div id="flash"></div>
 <div id="dims" class="card" hidden></div>
+<div id="revBar" class="card" hidden>
+  <button type="button" id="revMicBtn" title="Speak revision (browser dictation)">🎤</button>
+  <input id="revInput" type="text" placeholder="Describe revision (Enter to send)…" autocomplete="off">
+  <button type="button" id="revSendBtn">Send</button>
+  <span id="revStatus"></span>
+</div>
 <div id="partsPop" class="card" hidden></div>
 <div id="player" class="card" role="group" aria-label="Assembly player" hidden>
-  <button type="button" id="playBtn" title="Play / Pause (Space)">▶</button>
+  <button type="button" id="playBtn" title="Play / Pause assembly (Space)">▶ Play</button>
+  <button type="button" id="explodeBtn" title="Toggle Exploded / Assembled">Explode</button>
   <button type="button" id="loopBtn" aria-pressed="true" title="Loop playback">↻</button>
   <input type="range" id="scrub" min="0" max="1" step="0.002" value="1" aria-label="Assembly progress">
   <span id="stepLabel">Assembled</span>
@@ -225,6 +243,7 @@ for (const [name, p] of Object.entries(LIGHT_PRESETS)) {
 addEventListener("keydown", (e) => {
   if (e.target.closest("input, select, textarea")) return;
   if (e.key === " " && !$("player").hidden) { e.preventDefault(); togglePlay(); return; }
+  if (e.key.toLowerCase() === "v" && !$("revToggleBtn").hidden) { toggleRevBar(true); return; }
   if (e.key.toLowerCase() === "x" && !$("player").hidden) { setXray(!xrayOn); flash(`X-Ray: ${xrayOn ? "on" : "off"}`); }
   if (e.key.toLowerCase() === "p" && !$("modeBar").hidden) { setViewMode(viewMode === "plate" ? "assembly" : "plate"); }
   if (e.key.toLowerCase() === "g") { setGrid(!showGrid); flash(`Grid: ${showGrid ? "on" : "off"}`); }
@@ -352,7 +371,9 @@ function bindAssembly(root, spec) {
   const hasPlate = partBindings.some((b) => b.step.plate);
   const hasAnim = partBindings.some((b) => b.animated);
   $("modeBar").hidden = !hasPlate;
-  $("player").hidden = !hasAnim && partBindings.length <= 1;
+  $("player").hidden = partBindings.length === 0;
+  for (const id of ["playBtn", "explodeBtn", "loopBtn", "scrub"]) $(id).hidden = !hasAnim;
+  for (const b of $("player").querySelectorAll("button[data-speed]")) b.hidden = !hasAnim;
   $("partsPop").innerHTML = partBindings.map((b, idx) =>
     `<label><input type="checkbox" data-pidx="${idx}" checked> ${esc(b.step.label || b.step.part)}</label>`
   ).join("");
@@ -399,7 +420,8 @@ function updateModeUI() {
 }
 
 function updatePlayerUI() {
-  $("playBtn").textContent = playing ? "⏸" : "▶";
+  $("playBtn").textContent = playing ? "⏸ Pause" : "▶ Play";
+  $("explodeBtn").textContent = asmProgress < 0.5 ? "Assemble" : "Explode";
   $("loopBtn").setAttribute("aria-pressed", String(looping));
   $("scrub").value = String(asmProgress);
   if (viewMode === "plate") {
@@ -514,6 +536,13 @@ function startRecording(orbit360) {
 for (const b of $("modeBar").querySelectorAll("button[data-mode]"))
   b.addEventListener("click", () => setViewMode(b.dataset.mode));
 $("playBtn").addEventListener("click", togglePlay);
+$("explodeBtn").addEventListener("click", () => {
+  if (viewMode === "plate") setViewMode("assembly");
+  playing = false;
+  asmProgress = asmProgress < 0.5 ? 1 : 0;
+  applyTransforms();
+  updatePlayerUI();
+});
 $("loopBtn").addEventListener("click", () => { looping = !looping; updatePlayerUI(); });
 $("scrub").addEventListener("input", (e) => {
   if (viewMode === "plate") setViewMode("assembly");
@@ -666,6 +695,7 @@ async function show(keepView) {
   if (model) { scene.remove(model); model = null; }
   shown = meta.version;
   loadReportBadge(current, meta.version);
+  refreshRevisionsUI();
   if (!hasGlb) { bindAssembly(null, null); return; }
   const blob = await api(`/projects/${current}/versions/${meta.version}/files/model.glb`, true);
   const url = URL.createObjectURL(blob);
@@ -719,6 +749,13 @@ async function onEvent(ev) {
     pollPrinters(true);
     return;
   }
+  if (ev.type === "revision" || ev.type === "revision_status" || ev.type === "session") {
+    if (!ev.project || ev.project === current || ev.revision?.project === current) refreshRevisionsUI();
+    if (ev.type === "revision_status" && ev.revision?.project === current) {
+      flash(`Revision ${ev.revision.status}${ev.revision.result_version ? " → v" + ev.revision.result_version : ""}`);
+    }
+    return;
+  }
   if (ev.type !== "version") return;
   await loadProjects();
   if (ev.project === current && ev.version !== shown) {
@@ -726,6 +763,72 @@ async function onEvent(ev) {
     flash(`${ev.project} v${ev.version} arrived`);
   }
 }
+
+// --- LAN Revision bar (type or browser voice dictation) ---
+let speechRec = null;
+function toggleRevBar(forceOpen) {
+  const open = forceOpen === true ? true : $("revBar").hidden;
+  $("revBar").hidden = !open;
+  if (open) { $("revInput").focus(); refreshRevisionsUI(); }
+}
+
+async function refreshRevisionsUI() {
+  if (!canPrint || !current) return;
+  const r = await call("GET", `/projects/${current}/revisions`);
+  if (!r.ok) return;
+  const st = $("revStatus");
+  const latest = r.data.revisions?.[0];
+  if (latest && (latest.status === "queued" || latest.status === "running")) {
+    st.className = "live";
+    st.textContent = `${latest.status}: ${latest.prompt.slice(0, 28)}`;
+  } else if (r.data.session_connected) {
+    st.className = "live";
+    st.textContent = "● Chat listening";
+  } else {
+    st.className = "";
+    st.textContent = "Queues on Hub";
+  }
+}
+
+async function submitWebRevision() {
+  const prompt = $("revInput").value.trim();
+  if (!prompt || !current) return;
+  $("revSendBtn").disabled = true;
+  const r = await call("POST", `/projects/${current}/revisions`, { prompt, version: shown, source: "web" });
+  $("revSendBtn").disabled = false;
+  if (r.ok) {
+    $("revInput").value = "";
+    flash(r.data.session_connected ? "Revision sent to active chat!" : "Revision queued on Hub");
+    refreshRevisionsUI();
+  } else {
+    flash(r.data.detail || `Revision error (${r.status})`);
+  }
+}
+
+$("revToggleBtn").addEventListener("click", () => toggleRevBar());
+$("revSendBtn").addEventListener("click", submitWebRevision);
+$("revInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); submitWebRevision(); }
+  if (e.key === "Escape") $("revBar").hidden = true;
+});
+$("revMicBtn").addEventListener("click", () => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { flash("Voice dictation requires Chrome/Safari/Edge"); return; }
+  if (speechRec) { speechRec.stop(); return; }
+  speechRec = new SR();
+  speechRec.lang = navigator.language || "en-US";
+  speechRec.interimResults = true;
+  speechRec.maxAlternatives = 1;
+  $("revMicBtn").classList.add("listening");
+  speechRec.onresult = (ev) => {
+    const text = [...ev.results].map((r) => r[0].transcript).join("");
+    $("revInput").value = text;
+    if (ev.results[ev.results.length - 1].isFinal) submitWebRevision();
+  };
+  speechRec.onerror = () => { $("revMicBtn").classList.remove("listening"); speechRec = null; };
+  speechRec.onend = () => { $("revMicBtn").classList.remove("listening"); speechRec = null; };
+  speechRec.start();
+});
 
 // --- Multi-printer status & Print dialog ---
 const dlg = $("printDlg");
@@ -824,6 +927,7 @@ async function start() {
   try {
     const me = await api("/me");
     canPrint = me.can_print;
+    $("revToggleBtn").hidden = !canPrint || me.remote;
     if (me.remote) flash("Remote: read-only preview");
   } catch (e) { console.warn(e); }
   await pollPrinters(true);
