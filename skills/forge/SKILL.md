@@ -71,7 +71,7 @@ Before writing geometry for a new part or new component, resolve and confirm in 
 ## 6. Interactive Apple TV / Web LAN Revision Loop (Session-Bound)
 When the user wants to review a pushed model on Apple TV or LAN Web Preview (`🎤 Revise`) and dictate revisions into the **current chat session**:
 1. Run `forge wait-revision <forge-name>` in the background (it connects to the Hub's LAN-only SSE queue and wakes you up when a revision arrives).
-2. Apply the requested edit in `params.py` / `<part>.py`, run `forge run` + `forge push <forge-name> --preview -m "..."`.
+2. Keep the low-token rule: for numeric/clearance revisions, read and edit **only `params.py`** (only touch `<part>.py` for structural geometry changes — patch in place, never rewrite from scratch). Verify with `forge run ... --fast --json` first, then run full `forge run` + `forge push <forge-name> --preview -m "..."`.
 3. Mark the revision complete so Apple TV updates live:
    ```bash
    forge revision-status <forge-name> <revision_id> done --version <new_version>
